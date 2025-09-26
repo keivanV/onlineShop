@@ -1,0 +1,1814 @@
+openapi: 3.0.3
+info:
+  title: Education Platform API
+  description: API for managing students, teachers, categories, courses, articles, discount codes, subscriptions, and user dashboard with JWT authentication and refresh tokens.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api
+    description: Local server
+tags:
+  - name: Admin
+    description: Operations restricted to admin users
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        family: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        birthdate: { type: string, format: date }
+        city: { type: string }
+        address: { type: string }
+        profilePic: { type: string }
+        role: { type: string, enum: [student, teacher] }
+        status: { type: string, enum: [active, ban] }
+        subscription: { type: string, enum: [regular, vip] }
+        subscriptionExpiresAt: { type: string, format: date-time }
+        coursesEnrolled: { type: array, items: { type: string } }
+        coursesTaught: { type: array, items: { type: string } }
+        rating: { type: number }
+        expertise: { type: string }
+        nationalId: { type: string }
+        bio: { type: string }
+        lastLogin: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+      required: [name, family, phone, email, password]
+    Admin:
+      type: object
+      properties:
+        _id: { type: string }
+        username: { type: string }
+        password: { type: string }
+      required: [username, password]
+    Category:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        tags: { type: array, items: { type: string } }
+        description: { type: string }
+        displayOrder: { type: number }
+        courseCount: { type: number }
+      required: [name, displayOrder]
+    Comment:
+      type: object
+      properties:
+        user: { type: string }
+        text: { type: string }
+        rating: { type: number, minimum: 0, maximum: 5 }
+        createdAt: { type: string, format: date-time }
+      required: [user, text]
+    Course:
+      type: object
+      properties:
+        _id: { type: string }
+        coverImage: { type: string }
+        title: { type: string }
+        category: { type: string }
+        teacher: { type: string }
+        status: { type: string, enum: [active, pending, pre-register] }
+        level: { type: string, enum: [beginner, intermediate, advanced] }
+        duration: { type: number }
+        previewVideo: { type: string }
+        presentationMethod: { type: string, enum: [download, streaming] }
+        downloadLink: { type: string }
+        prerequisites: { type: array, items: { type: string } }
+        type: { type: string, enum: [free, vip, paid] }
+        price: { type: number }
+        discount: { type: number }
+        chapters:
+          type: array
+          items:
+            type: object
+            properties:
+              title: { type: string }
+              duration: { type: number }
+              description: { type: string }
+              videos:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    title: { type: string }
+                    description: { type: string }
+                    duration: { type: number }
+                    time: { type: string }
+                    streamingLink: { type: string }
+                  required: [title, duration]
+            required: [title, duration]
+        students: { type: array, items: { type: string } }
+        rating: { type: number }
+        expertise: { type: string }
+        comments:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+      required: [coverImage, title, category, teacher, status, level, duration, presentationMethod, type]
+    Article:
+      type: object
+      properties:
+        _id: { type: string }
+        title: { type: string }
+        shortDescription: { type: string }
+        content: { type: string }
+        featuredImage: { type: string }
+        category: { type: string }
+        tags: { type: array, items: { type: string } }
+        readingTime: { type: number }
+        status: { type: string, enum: [draft, published] }
+      required: [title, shortDescription, content, featuredImage,  category, readingTime, status]
+    DiscountCode:
+      type: object
+      properties:
+        _id: { type: string }
+        code: { type: string }
+        discountPercent: { type: number }
+        maxUses: { type: number }
+        usedCount: { type: number }
+        isActive: { type: boolean }
+        expiresAt: { type: string, format: date-time }
+        usedBy:
+          type: array
+          items:
+            type: object
+            properties:
+              user: { type: string }
+              course: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [code, discountPercent, maxUses]
+    SubscriptionPlan:
+      type: object
+      properties:
+        _id: { type: string }
+        duration: { type: string, enum: [1month, 3month, 6month] }
+        price: { type: number }
+        updatedAt: { type: string, format: date-time }
+      required: [duration, price]
+    Payment:
+      type: object
+      properties:
+        user: { type: string }
+        course: { type: string }
+        subscriptionPlan: { type: string }
+        amount: { type: number }
+        authority: { type: string }
+        refId: { type: string }
+        status: { type: string, enum: [pending, completed, failed] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [user, amount, authority, status]
+    VideoAccess:
+      type: object
+      properties:
+        message: { type: string }
+        video:
+          type: object
+          properties:
+            title: { type: string }
+            description: { type: string }
+            duration: { type: number }
+            time: { type: string }
+            streamingLink: { type: string }
+            downloadLink: { type: string }
+      required: [message, video]
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+      required: [message]
+    Tokens:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+      required: [accessToken, refreshToken]
+    UserDashboardResponse:
+      type: object
+      properties:
+        role: { type: string, enum: [student, teacher] }
+        enrolledCourses:
+          type: array
+          items:
+            type: object
+            properties:
+              _id: { type: string }
+              title: { type: string }
+              coverImage: { type: string }
+              category: { type: object, properties: { name: { type: string } } }
+              teacher: { type: object, properties: { name: { type: string }, family: { type: string }, expertise: { type: string } } }
+              status: { type: string }
+              level: { type: string }
+              duration: { type: number }
+              type: { type: string }
+              price: { type: number }
+        taughtCourses:
+          type: array
+          items:
+            type: object
+            properties:
+              _id: { type: string }
+              title: { type: string }
+              coverImage: { type: string }
+              category: { type: object, properties: { name: { type: string } } }
+              status: { type: string }
+              level: { type: string }
+              duration: { type: number }
+              type: { type: string }
+              price: { type: number }
+              studentCount: { type: number }
+      required: [role, enrolledCourses, taughtCourses]
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user (student)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                family: { type: string }
+                phone: { type: string }
+                email: { type: string }
+                password: { type: string }
+                confirmPassword: { type: string }
+                birthdate: { type: string, format: date }
+                city: { type: string }
+                address: { type: string }
+                profilePic: { type: string }
+              required: [name, family, phone, email, password, confirmPassword]
+      responses:
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  otp: { type: string }
+        '400':
+          description: Bad request (e.g., missing fields, passwords don't match)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Rate limit exceeded for OTP request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/verify-otp:
+    post:
+      summary: Verify OTP to complete registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                otp: { type: string }
+              required: [phone, otp]
+      responses:
+        '200':
+          description: Registration completed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '400':
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/login-user:
+    post:
+      summary: Login as user (student/teacher)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                password: { type: string }
+              required: [phone, password]
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '400':
+          description: Invalid credentials or missing fields
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/login-admin:
+    post:
+      summary: Login as admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                password: { type: string }
+              required: [username, password]
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tokens' }
+        '400':
+          description: Invalid credentials or missing fields
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+              required: [refreshToken]
+      responses:
+        '200':
+          description: New access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+        '401':
+          description: No refresh token provided
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/students:
+    get:
+      summary: Get all students by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    _id: { type: string }
+                    name: { type: string }
+                    family: { type: string }
+                    phone: { type: string }
+                    email: { type: string }
+                    createdAt: { type: string, format: date-time }
+                    status: { type: string }
+                    subscription: { type: string }
+                    subscriptionExpiresAt: { type: string, format: date-time }
+                    coursesEnrolled: { type: array, items: { type: string } }
+                    lastLogin: { type: string, format: date-time }
+                    coursesCount: { type: number }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/students/{phone}:
+    put:
+      summary: Edit student by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                family: { type: string }
+                email: { type: string }
+                phone: { type: string }
+                birthdate: { type: string, format: date }
+                city: { type: string }
+                address: { type: string }
+                profilePic: { type: string }
+                status: { type: string, enum: [active, ban] }
+                subscription: { type: string, enum: [regular, vip] }
+                subscriptionExpiresAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Updated student
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Bad request (e.g., phone already in use)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/profile:
+    put:
+      summary: Edit own profile (user)
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                family: { type: string }
+                email: { type: string }
+                birthdate: { type: string, format: date }
+                city: { type: string }
+                address: { type: string }
+                profilePic: { type: string }
+                newPassword: { type: string }
+                confirmNewPassword: { type: string }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Bad request (e.g., missing fields, passwords don't match)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/teachers:
+    get:
+      summary: Get all teachers by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of teachers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    _id: { type: string }
+                    name: { type: string }
+                    family: { type: string }
+                    email: { type: string }
+                    coursesCount: { type: number }
+                    rating: { type: number }
+                    status: { type: string }
+                    expertise: { type: string }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Add a new teacher by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+              required: [phone]
+      responses:
+        '200':
+          description: Teacher added
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Invalid phone number
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Student not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/teachers/{phone}:
+    put:
+      summary: Edit teacher by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: phone
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                family: { type: string }
+                email: { type: string }
+                phone: { type: string }
+                expertise: { type: string }
+                nationalId: { type: string }
+                address: { type: string }
+                bio: { type: string }
+                status: { type: string, enum: [active, ban, pending] }
+                profilePic: { type: string }
+      responses:
+        '200':
+          description: Updated teacher
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Bad request (e.g., phone already in use)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Teacher not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /users/dashboard:
+    get:
+      summary: Get user dashboard with enrolled and taught courses
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User dashboard data
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserDashboardResponse' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /categories:
+    get:
+      summary: Get all categories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    _id: { type: string }
+                    name: { type: string }
+                    tags: { type: array, items: { type: string } }
+                    description: { type: string }
+                    displayOrder: { type: number }
+                    courseCount: { type: number }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a new category by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                tags: { type: array, items: { type: string } }
+                description: { type: string }
+                displayOrder: { type: number }
+              required: [name, displayOrder]
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '400':
+          description: Bad request (e.g., name already in use)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /categories/{id}:
+    put:
+      summary: Edit a category by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                tags: { type: array, items: { type: string } }
+                description: { type: string }
+                displayOrder: { type: number }
+              required: [name, displayOrder]
+      responses:
+        '200':
+          description: Updated category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '400':
+          description: Bad request (e.g., name already in use)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses:
+    get:
+      summary: Get all courses
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    _id: { type: string }
+                    coverImage: { type: string }
+                    title: { type: string }
+                    category: { type: object, properties: { name: { type: string } } }
+                    teacher: { type: object, properties: { name: { type: string }, family: { type: string }, expertise: { type: string } } }
+                    teacherName: { type: string }
+                    expertise: { type: string }
+                    status: { type: string }
+                    level: { type: string }
+                    duration: { type: number }
+                    previewVideo: { type: string }
+                    presentationMethod: { type: string }
+                    downloadLink: { type: string }
+                    prerequisites: { type: array, items: { type: string } }
+                    type: { type: string, enum: [free, vip, paid] }
+                    price: { type: number }
+                    discount: { type: number }
+                    chapters: { type: array, items: { type: object } }
+                    studentCount: { type: number }
+                    rating: { type: number }
+                    comments: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a new course by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Course' }
+      responses:
+        '201':
+          description: Course created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '400':
+          description: Invalid category, teacher, or course type
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{id}:
+    put:
+      summary: Edit a course by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Course' }
+      responses:
+        '200':
+          description: Updated course
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '400':
+          description: Invalid category, teacher, or course type
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      summary: Delete a course by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Course deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{idOrName}:
+    get:
+      summary: Get a course by ID or name
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: idOrName
+          required: true
+          schema: { type: string }
+          description: Course ID or name
+      responses:
+        '200':
+          description: Course details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/enroll:
+    post:
+      summary: Enroll in a course with optional discount code
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                courseId: { type: string }
+                discountCode: { type: string }
+              required: [courseId]
+      responses:
+        '200':
+          description: Enrolled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  courseId: { type: string }
+                  originalPrice: { type: number }
+                  courseDiscountPercent: { type: number }
+                  courseDiscountAmount: { type: number }
+                  codeDiscountPercent: { type: number }
+                  codeDiscountAmount: { type: number }
+                  finalPrice: { type: number }
+        '400':
+          description: Bad request (e.g., already enrolled, invalid discount code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: VIP subscription required for VIP courses
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course or user not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{courseId}/comments:
+    post:
+      summary: Add a comment to a course
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                rating: { type: number, minimum: 0, maximum: 5 }
+              required: [text]
+      responses:
+        '201':
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Not enrolled in the course
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      summary: Get comments for a course
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comment' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{courseId}/chapters/{chapterId}/videos/{videoId}:
+    get:
+      summary: Access a course video
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: chapterId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: videoId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Video access granted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VideoAccess' }
+        '400':
+          description: Bad request (e.g., invalid presentation method)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Not enrolled or VIP subscription required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course, chapter, or video not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /articles:
+    get:
+      summary: Get all articles
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of articles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Article' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a new article by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Article' }
+      responses:
+        '201':
+          description: Article created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Article' }
+        '400':
+          description: Invalid author or category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /articles/{id}:
+    put:
+      summary: Edit an article by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Article' }
+      responses:
+        '200':
+          description: Updated article
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Article' }
+        '400':
+          description: Invalid author or category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Article not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      summary: Delete an article by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Article deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Article not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /discounts:
+    get:
+      summary: Get all discount codes by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of discount codes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DiscountCode' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a new discount code by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                discountPercent: { type: number }
+                maxUses: { type: number }
+                isActive: { type: boolean }
+                expiresAt: { type: string, format: date-time }
+              required: [code, discountPercent, maxUses]
+      responses:
+        '201':
+          description: Discount code created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountCode' }
+        '400':
+          description: Bad request (e.g., code already in use, invalid percent)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /discounts/{id}:
+    put:
+      summary: Edit a discount code by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                discountPercent: { type: number }
+                maxUses: { type: number }
+                isActive: { type: boolean }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Updated discount code
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DiscountCode' }
+        '400':
+          description: Bad request (e.g., code already in use, invalid percent)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Discount code not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /discounts/apply:
+    post:
+      summary: Apply a discount code to a course
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                courseId: { type: string }
+              required: [code, courseId]
+      responses:
+        '200':
+          description: Discount applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  originalPrice: { type: number }
+                  courseDiscountPercent: { type: number }
+                  courseDiscountAmount: { type: number }
+                  codeDiscountPercent: { type: number }
+                  codeDiscountAmount: { type: number }
+                  finalPrice: { type: number }
+        '400':
+          description: Bad request (e.g., code inactive, max uses reached)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Discount code or course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /subscriptions/plans:
+    get:
+      summary: Get all subscription plans
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of subscription plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SubscriptionPlan' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      summary: Create a new subscription plan by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration: { type: string, enum: [1month, 3month, 6month] }
+                price: { type: number }
+              required: [duration, price]
+      responses:
+        '201':
+          description: Subscription plan created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionPlan' }
+        '400':
+          description: Bad request (e.g., invalid duration, plan exists)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /subscriptions/plans/{id}:
+    put:
+      summary: Update a subscription plan by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price: { type: number }
+              required: [price]
+      responses:
+        '200':
+          description: Updated subscription plan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionPlan' }
+        '400':
+          description: Bad request (e.g., invalid price)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Subscription plan not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /subscriptions/purchase:
+    post:
+      summary: Purchase a subscription plan
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscriptionPlanId: { type: string }
+              required: [subscriptionPlanId]
+      responses:
+        '200':
+          description: Payment created or subscription activated without payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  paymentUrl: { type: string }
+                  authority: { type: string }
+                  paymentId: { type: string }
+                  finalPrice: { type: number }
+                  paymentRequired: { type: boolean }
+                  subscriptionPlanId: { type: string }
+                  subscriptionExpiresAt: { type: string, format: date-time }
+        '400':
+          description: Bad request (e.g., invalid subscription plan, active subscription exists)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Subscription plan or user not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /payments:
+    post:
+      summary: Create a payment for a course
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                courseId: { type: string }
+                discountCode: { type: string }
+              required: [courseId]
+      responses:
+        '200':
+          description: Payment created or enrolled without payment
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  paymentUrl: { type: string }
+                  authority: { type: string }
+                  paymentId: { type: string }
+                  originalPrice: { type: number }
+                  courseDiscountPercent: { type: number }
+                  courseDiscountAmount: { type: number }
+                  codeDiscountPercent: { type: number }
+                  codeDiscountAmount: { type: number }
+                  finalPrice: { type: number }
+                  paymentRequired: { type: boolean }
+        '400':
+          description: Bad request (e.g., already enrolled, invalid discount code)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course or user not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /payments/verify:
+    get:
+      summary: Verify a payment
+      parameters:
+        - in: query
+          name: paymentId
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: refId
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: status
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Payment verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  refId: { type: string }
+                  courseId: { type: string }
+                  subscriptionPlanId: { type: string }
+                  subscriptionExpiresAt: { type: string, format: date-time }
+        '400':
+          description: Payment failed or already processed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Payment not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+security:
+  - BearerAuth: []
