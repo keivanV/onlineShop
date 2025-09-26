@@ -1,4 +1,3 @@
-
 const Course = require('../models/Course');
 const Category = require('../models/Category');
 const User = require('../models/User');
@@ -234,12 +233,13 @@ const addComment = async (req, res) => {
     course.comments.push({
       user: userId,
       text,
-      rating
+      rating,
+      status: 'pending' // Set initial status to pending
     });
 
     await course.save();
-    console.log(`Comment added to course ${courseId} by user ${userId}`);
-    res.status(201).json({ message: 'Comment added successfully' });
+    console.log(`Comment added (pending) to course ${courseId} by user ${userId}`);
+    res.status(201).json({ message: 'Comment submitted for approval' });
   } catch (error) {
     console.error(`Add comment error: ${error.message}`, { error });
     res.status(500).json({ message: 'Server error while adding comment' });
@@ -256,10 +256,65 @@ const getComments = async (req, res) => {
       return res.status(404).json({ message: 'Course not found' });
     }
 
-    res.status(200).json(course.comments);
+    // Filter only approved comments
+    const approvedComments = course.comments.filter(comment => comment.status === 'approved');
+
+    res.status(200).json(approvedComments);
   } catch (error) {
     console.error(`Get comments error: ${error.message}`, { error });
     res.status(500).json({ message: 'Server error while fetching comments' });
+  }
+};
+
+const approveComment = async (req, res) => {
+  try {
+    const { courseId, commentId } = req.params;
+
+    const course = await Course.findById(courseId);
+    if (!course) {
+      console.log(`Approve comment failed: Course not found: ${courseId}`);
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    const comment = course.comments.id(commentId);
+    if (!comment) {
+      console.log(`Approve comment failed: Comment not found: ${commentId}`);
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    if (comment.status !== 'pending') {
+      console.log(`Approve comment failed: Comment not pending: ${commentId}`);
+      return res.status(400).json({ message: 'Comment is not pending' });
+    }
+
+    comment.status = 'approved';
+    await course.save();
+
+    console.log(`Comment approved: ${commentId} in course ${courseId}`);
+    res.status(200).json({ message: 'Comment approved' });
+  } catch (error) {
+    console.error(`Approve comment error: ${error.message}`, { error });
+    res.status(500).json({ message: 'Server error while approving comment' });
+  }
+};
+
+const getPendingComments = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+
+    const course = await Course.findById(courseId).populate('comments.user', 'name family');
+    if (!course) {
+      console.log(`Get pending comments failed: Course not found: ${courseId}`);
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    // Filter only pending comments
+    const pendingComments = course.comments.filter(comment => comment.status === 'pending');
+
+    res.status(200).json(pendingComments);
+  } catch (error) {
+    console.error(`Get pending comments error: ${error.message}`, { error });
+    res.status(500).json({ message: 'Server error while fetching pending comments' });
   }
 };
 
@@ -374,4 +429,4 @@ const accessCourseVideo = async (req, res) => {
   }
 };
 
-module.exports = { getCourses, createCourse, editCourse, deleteCourse, enrollCourse, accessCourseVideo, addComment, getComments, getCourse };
+module.exports = { getCourses, createCourse, editCourse, deleteCourse, enrollCourse, accessCourseVideo, addComment, getComments, approveComment, getPendingComments, getCourse };

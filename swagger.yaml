@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Education Platform API
-  description: API for managing students, teachers, categories, courses, articles, discount codes, subscriptions, and user dashboard with JWT authentication and refresh tokens.
+  description: API for managing students, teachers, categories, courses, articles, discount codes, subscriptions, and user dashboard with JWT authentication, refresh tokens, password reset, and comment moderation.
   version: 1.0.0
 servers:
   - url: http://localhost:5000/api
@@ -64,8 +64,9 @@ components:
         user: { type: string }
         text: { type: string }
         rating: { type: number, minimum: 0, maximum: 5 }
+        status: { type: string, enum: [pending, approved], default: pending }
         createdAt: { type: string, format: date-time }
-      required: [user, text]
+      required: [user, text, status]
     Course:
       type: object
       properties:
@@ -123,7 +124,7 @@ components:
         tags: { type: array, items: { type: string } }
         readingTime: { type: number }
         status: { type: string, enum: [draft, published] }
-      required: [title, shortDescription, content, featuredImage,  category, readingTime, status]
+      required: [title, shortDescription, content, featuredImage, category, readingTime, status]
     DiscountCode:
       type: object
       properties:
@@ -293,6 +294,87 @@ paths:
               schema: { $ref: '#/components/schemas/Tokens' }
         '400':
           description: Invalid or expired OTP
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/forgot-password:
+    post:
+      summary: Request OTP for password reset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+              required: [phone]
+      responses:
+        '200':
+          description: OTP sent for password reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  otp: { type: string }
+        '400':
+          description: Bad request (e.g., missing phone)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Rate limit exceeded for OTP request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /auth/reset-password:
+    post:
+      summary: Reset password using OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                otp: { type: string }
+                newPassword: { type: string }
+                confirmNewPassword: { type: string }
+              required: [phone, otp, newPassword, confirmNewPassword]
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Bad request (e.g., invalid OTP, passwords don't match)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: User not found
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1115,7 +1197,7 @@ paths:
               required: [text]
       responses:
         '201':
-          description: Comment added
+          description: Comment submitted for approval
           content:
             application/json:
               schema:
@@ -1148,7 +1230,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
     get:
-      summary: Get comments for a course
+      summary: Get approved comments for a course
       security:
         - BearerAuth: []
       parameters:
@@ -1158,7 +1240,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: List of comments
+          description: List of approved comments
           content:
             application/json:
               schema:
@@ -1171,6 +1253,94 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '404':
           description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{courseId}/comments/pending:
+    get:
+      summary: Get pending comments for a course by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: List of pending comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comment' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /courses/{courseId}/comments/{commentId}/approve:
+    put:
+      summary: Approve a comment by admin
+      tags: [Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: courseId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: commentId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Comment approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          description: Bad request (e.g., comment not pending)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Course or comment not found
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

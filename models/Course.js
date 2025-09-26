@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const videoSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
-  duration: { type: Number , required: true }, // in minutes
+  duration: { type: Number, required: true }, // in minutes
   time: { type: String } // e.g., '10:00'
 });
 
@@ -18,6 +18,7 @@ const commentSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   text: { type: String, required: true },
   rating: { type: Number, min: 0, max: 5 },
+  status: { type: String, enum: ['pending', 'approved'], default: 'pending' }, // Added status field
   createdAt: { type: Date, default: Date.now }
 });
 
