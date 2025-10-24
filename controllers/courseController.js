@@ -5,7 +5,15 @@ const DiscountCode = require('../models/DiscountCode');
 //----------------------------------------------------
 const getCourses = async (req, res) => {
   try {
-    const courses = await Course.find()
+    const { status } = req.query; // Extract status query parameter
+
+    // Build query object
+    const query = {};
+    if (status && ['active', 'pending', 'pre-register'].includes(status)) {
+      query.status = status;
+    }
+
+    const courses = await Course.find(query)
       .populate('category', 'name')
       .populate('teacher', 'name family expertise')
       .lean();
@@ -17,13 +25,14 @@ const getCourses = async (req, res) => {
       expertise: course.teacher?.expertise || ''
     }));
 
-    console.log(`Fetched ${courses.length} courses for user: ${req.user?.id || 'anonymous'}`);
+    console.log(`Fetched ${courses.length} courses for user: ${req.user?.id || 'anonymous'}, status filter: ${status || 'none'}`);
     res.status(200).json(formattedCourses);
   } catch (error) {
     console.error('Get courses error:', error);
-    res.status(500).json({ message: 'Server error while fetching courses' });
+    res.status(500).json({ message: 'خطا در دریافت دوره‌ها' });
   }
 };
+
 //---------------------------------------
 const createCourse = async (req, res) => {
   try {

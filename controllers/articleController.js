@@ -90,4 +90,25 @@ const getArticles = async (req, res) => {
   }
 };
 
-module.exports = { createArticle, editArticle, deleteArticle, getArticles };
+
+const getArticleById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const article = await Article.findById(id)
+      .populate('author', 'username')
+      .populate('category', 'name');
+    if (!article) {
+      console.log(`Get article failed: Article not found: ${id}`);
+      return res.status(404).json({ message: 'مقاله یافت نشد' });
+    }
+
+    console.log(`Fetched article: ${article.title} (ID: ${id})`);
+    res.status(200).json(article);
+  } catch (error) {
+    console.error(`Get article error: ${error.message}`, { error });
+    res.status(500).json({ message: 'خطا در دریافت مقاله' });
+  }
+};
+
+module.exports = { createArticle, editArticle, deleteArticle, getArticles, getArticleById };

@@ -6,6 +6,6 @@ const router = express.Router();
 
 router.post('/', verifyToken, verifyAdmin, createCategory);
 router.put('/:id', verifyToken, verifyAdmin, editCategory);
-router.get('/', verifyToken, verifyAdmin, getCategories); // Or open ?!
+router.get('/', getCategories); // Or open ?!
 
 module.exports = router;

@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-//----------------------------------------
+
 const videoSchema = new mongoose.Schema({
   title: { type: String, required: true },
   description: { type: String },
@@ -18,7 +18,7 @@ const commentSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   text: { type: String, required: true },
   rating: { type: Number, min: 0, max: 5 },
-  status: { type: String, enum: ['pending', 'approved'], default: 'pending' }, // Added status field
+  status: { type: String, enum: ['pending', 'approved'], default: 'pending' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -32,17 +32,17 @@ const courseSchema = new mongoose.Schema({
   duration: { type: Number, required: true }, // total in hours or minutes
   previewVideo: { type: String },
   presentationMethod: { type: String, enum: ['download', 'streaming'], required: true },
-  downloadLink: { type: String }, // if download
+  downloadLink: { type: String },
   prerequisites: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
   type: { type: String, enum: ['free', 'vip', 'paid'], required: true },
-  price: { type: Number }, // Required only for 'paid' type
+  price: { type: Number },
   discount: { type: Number, default: 0 },
   chapters: [chapterSchema],
   students: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   rating: { type: Number, default: 0 },
-  expertise: { type: String }, // From teacher
+  expertise: { type: String },
   comments: [commentSchema]
-});
+}, { timestamps: true }); // Added timestamps option
 
 // Validation for price based on type
 courseSchema.pre('save', function(next) {
@@ -50,7 +50,7 @@ courseSchema.pre('save', function(next) {
     return next(new Error('Price is required for paid courses'));
   }
   if (this.type !== 'paid' && this.price) {
-    this.price = undefined; // Remove price for non-paid courses
+    this.price = undefined;
   }
   next();
 });

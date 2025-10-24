@@ -5,7 +5,7 @@ const articleSchema = new mongoose.Schema({
   shortDescription: { type: String, required: true },
   content: { type: String, required: true },
   featuredImage: { type: String, required: true },
-  author: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', required: true }, 
+  author: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', required: false }, 
   category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
   tags: [{ type: String }],
   readingTime: { type: Number, required: true }, // in minutes

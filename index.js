@@ -14,6 +14,9 @@ const authRoutes = require('./routes/auth');
 const paymentRoutes = require('./routes/payments');
 const discountRoutes = require('./routes/discounts');
 const subscriptionRoutes = require('./routes/subscriptions');
+const homepageRoutes = require('./routes/homepage');
+const basketRoutes = require('./routes/basket');
+
 //--------------------------------------
 dotenv.config();
 //--------------------------------------
@@ -40,6 +43,8 @@ app.use('/api/articles', articleRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/subscriptions' , subscriptionRoutes);
+app.use('/api/homepage', homepageRoutes);
+app.use('/api/basket', basketRoutes);
 //--------------------------------------
 // Start server
 const PORT = process.env.PORT || 5000;

@@ -1,3 +1,4 @@
+
 openapi: 3.0.3
 info:
   title: Education Platform API
@@ -7,6 +8,26 @@ servers:
   - url: http://localhost:5000/api
     description: Local server
 tags:
+  - name: Auth
+    description: Operations related to authentication and authorization
+  - name: Users
+    description: Operations for managing students and teachers
+  - name: Categories
+    description: Operations for managing course categories
+  - name: Courses
+    description: Operations for managing courses
+  - name: Articles
+    description: Operations for managing articles
+  - name: Discounts
+    description: Operations for managing discount codes
+  - name: Subscriptions
+    description: Operations for managing subscription plans
+  - name: Payments
+    description: Operations for managing payments
+  - name: Basket
+    description: Operations for managing the shopping cart
+  - name: Homepage
+    description: Operations for retrieving homepage data
   - name: Admin
     description: Operations restricted to admin users
 components:
@@ -230,6 +251,7 @@ paths:
   /auth/register:
     post:
       summary: Register a new user (student)
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -276,6 +298,7 @@ paths:
   /auth/verify-otp:
     post:
       summary: Verify OTP to complete registration
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -305,6 +328,7 @@ paths:
   /auth/forgot-password:
     post:
       summary: Request OTP for password reset
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -347,6 +371,7 @@ paths:
   /auth/reset-password:
     post:
       summary: Reset password using OTP
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -386,6 +411,7 @@ paths:
   /auth/login-user:
     post:
       summary: Login as user (student/teacher)
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -415,6 +441,7 @@ paths:
   /auth/login-admin:
     post:
       summary: Login as admin
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -444,6 +471,7 @@ paths:
   /auth/refresh:
     post:
       summary: Refresh access token
+      tags: [Auth]
       requestBody:
         required: true
         content:
@@ -480,7 +508,7 @@ paths:
   /users/students:
     get:
       summary: Get all students by admin
-      tags: [Admin]
+      tags: [Users, Admin]
       security:
         - BearerAuth: []
       responses:
@@ -523,7 +551,7 @@ paths:
   /users/students/{phone}:
     put:
       summary: Edit student by admin
-      tags: [Admin]
+      tags: [Users, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -583,6 +611,7 @@ paths:
   /users/profile:
     put:
       summary: Edit own profile (user)
+      tags: [Users]
       security:
         - BearerAuth: []
       requestBody:
@@ -630,7 +659,7 @@ paths:
   /users/teachers:
     get:
       summary: Get all teachers by admin
-      tags: [Admin]
+      tags: [Users, Admin]
       security:
         - BearerAuth: []
       responses:
@@ -668,7 +697,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Add a new teacher by admin
-      tags: [Admin]
+      tags: [Users, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -714,7 +743,7 @@ paths:
   /users/teachers/{phone}:
     put:
       summary: Edit teacher by admin
-      tags: [Admin]
+      tags: [Users, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -773,6 +802,7 @@ paths:
   /users/dashboard:
     get:
       summary: Get user dashboard with enrolled and taught courses
+      tags: [Users]
       security:
         - BearerAuth: []
       responses:
@@ -799,6 +829,7 @@ paths:
   /categories:
     get:
       summary: Get all categories
+      tags: [Categories]
       security:
         - BearerAuth: []
       responses:
@@ -829,7 +860,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Create a new category by admin
-      tags: [Admin]
+      tags: [Categories, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -873,7 +904,7 @@ paths:
   /categories/{id}:
     put:
       summary: Edit a category by admin
-      tags: [Admin]
+      tags: [Categories, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -926,12 +957,18 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
   /courses:
     get:
-      summary: Get all courses
-      security:
-        - BearerAuth: []
+      summary: Get all courses with optional status filter
+      tags: [Courses]
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: ['active', 'pending', 'pre-register']
+          description: Filter courses by status
       responses:
         '200':
-          description: List of courses
+          description: Successful response
           content:
             application/json:
               schema:
@@ -939,35 +976,46 @@ paths:
                 items:
                   type: object
                   properties:
-                    _id: { type: string }
-                    coverImage: { type: string }
-                    title: { type: string }
-                    category: { type: object, properties: { name: { type: string } } }
-                    teacher: { type: object, properties: { name: { type: string }, family: { type: string }, expertise: { type: string } } }
-                    teacherName: { type: string }
-                    expertise: { type: string }
-                    status: { type: string }
-                    level: { type: string }
-                    duration: { type: number }
-                    previewVideo: { type: string }
-                    presentationMethod: { type: string }
-                    downloadLink: { type: string }
-                    prerequisites: { type: array, items: { type: string } }
-                    type: { type: string, enum: [free, vip, paid] }
-                    price: { type: number }
-                    discount: { type: number }
-                    chapters: { type: array, items: { type: object } }
-                    studentCount: { type: number }
-                    rating: { type: number }
-                    comments: { type: array, items: { $ref: '#/components/schemas/Comment' } }
+                    _id:
+                      type: string
+                    title:
+                      type: string
+                    category:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                    teacher:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        family:
+                          type: string
+                        expertise:
+                          type: string
+                    teacherName:
+                      type: string
+                    studentCount:
+                      type: integer
+                    expertise:
+                      type: string
+                    status:
+                      type: string
+                      enum: ['active', 'pending', 'pre-register']
+                    level:
+                      type: string
+                    duration:
+                      type: number
+                    type:
+                      type: string
+                    price:
+                      type: number
         '500':
           description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Create a new course by admin
-      tags: [Admin]
+      tags: [Courses, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -1004,7 +1052,7 @@ paths:
   /courses/{id}:
     put:
       summary: Edit a course by admin
-      tags: [Admin]
+      tags: [Courses, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1050,7 +1098,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     delete:
       summary: Delete a course by admin
-      tags: [Admin]
+      tags: [Courses, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1090,6 +1138,7 @@ paths:
   /courses/{idOrName}:
     get:
       summary: Get a course by ID or name
+      tags: [Courses]
       security:
         - BearerAuth: []
       parameters:
@@ -1122,6 +1171,7 @@ paths:
   /courses/enroll:
     post:
       summary: Enroll in a course with optional discount code
+      tags: [Courses]
       security:
         - BearerAuth: []
       requestBody:
@@ -1178,6 +1228,7 @@ paths:
   /courses/{courseId}/comments:
     post:
       summary: Add a comment to a course
+      tags: [Courses]
       security:
         - BearerAuth: []
       parameters:
@@ -1231,6 +1282,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     get:
       summary: Get approved comments for a course
+      tags: [Courses]
       security:
         - BearerAuth: []
       parameters:
@@ -1264,7 +1316,7 @@ paths:
   /courses/{courseId}/comments/pending:
     get:
       summary: Get pending comments for a course by admin
-      tags: [Admin]
+      tags: [Courses, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1303,7 +1355,7 @@ paths:
   /courses/{courseId}/comments/{commentId}/approve:
     put:
       summary: Approve a comment by admin
-      tags: [Admin]
+      tags: [Courses, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1352,6 +1404,7 @@ paths:
   /courses/{courseId}/chapters/{chapterId}/videos/{videoId}:
     get:
       summary: Access a course video
+      tags: [Courses]
       security:
         - BearerAuth: []
       parameters:
@@ -1401,6 +1454,7 @@ paths:
   /articles:
     get:
       summary: Get all articles
+      tags: [Articles]
       security:
         - BearerAuth: []
       responses:
@@ -1418,7 +1472,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Create a new article by admin
-      tags: [Admin]
+      tags: [Articles, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -1453,95 +1507,67 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
   /articles/{id}:
-    put:
-      summary: Edit an article by admin
-      tags: [Admin]
-      security:
-        - BearerAuth: []
+    get:
+      summary: Get a single article by ID
+      tags: [Articles]
       parameters:
         - in: path
           name: id
           required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/Article' }
+          schema:
+            type: string
+          description: The ID of the article to retrieve
       responses:
         '200':
-          description: Updated article
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Article' }
-        '400':
-          description: Invalid author or category
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '403':
-          description: Admin access required
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: Article not found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-    delete:
-      summary: Delete an article by admin
-      tags: [Admin]
-      security:
-        - BearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Article deleted
+          description: Successful response
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message: { type: string }
-        '401':
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '403':
-          description: Admin access required
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+                  _id:
+                    type: string
+                  title:
+                    type: string
+                  shortDescription:
+                    type: string
+                  content:
+                    type: string
+                  featuredImage:
+                    type: string
+                  author:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                  category:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  readingTime:
+                    type: number
+                  status:
+                    type: string
+                    enum: ['draft', 'published']
+                  createdAt:
+                    type: string
+                    format: date-time
+                  updatedAt:
+                    type: string
+                    format: date-time
         '404':
           description: Article not found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
         '500':
           description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
   /discounts:
     get:
       summary: Get all discount codes by admin
-      tags: [Admin]
+      tags: [Discounts, Admin]
       security:
         - BearerAuth: []
       responses:
@@ -1569,7 +1595,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Create a new discount code by admin
-      tags: [Admin]
+      tags: [Discounts, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -1614,7 +1640,7 @@ paths:
   /discounts/{id}:
     put:
       summary: Edit a discount code by admin
-      tags: [Admin]
+      tags: [Discounts, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1668,6 +1694,7 @@ paths:
   /discounts/apply:
     post:
       summary: Apply a discount code to a course
+      tags: [Discounts]
       security:
         - BearerAuth: []
       requestBody:
@@ -1717,6 +1744,7 @@ paths:
   /subscriptions/plans:
     get:
       summary: Get all subscription plans
+      tags: [Subscriptions]
       security:
         - BearerAuth: []
       responses:
@@ -1739,7 +1767,7 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
     post:
       summary: Create a new subscription plan by admin
-      tags: [Admin]
+      tags: [Subscriptions, Admin]
       security:
         - BearerAuth: []
       requestBody:
@@ -1781,7 +1809,7 @@ paths:
   /subscriptions/plans/{id}:
     put:
       summary: Update a subscription plan by admin
-      tags: [Admin]
+      tags: [Subscriptions, Admin]
       security:
         - BearerAuth: []
       parameters:
@@ -1832,6 +1860,7 @@ paths:
   /subscriptions/purchase:
     post:
       summary: Purchase a subscription plan
+      tags: [Subscriptions]
       security:
         - BearerAuth: []
       requestBody:
@@ -1882,6 +1911,7 @@ paths:
   /payments:
     post:
       summary: Create a payment for a course
+      tags: [Payments]
       security:
         - BearerAuth: []
       requestBody:
@@ -1936,6 +1966,7 @@ paths:
   /payments/verify:
     get:
       summary: Verify a payment
+      tags: [Payments]
       parameters:
         - in: query
           name: paymentId
@@ -1980,5 +2011,264 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /homepage:
+    get:
+      summary: Get homepage data with statistics and paginated courses
+      tags: [Homepage]
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 3
+          description: Number of courses per page
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: ['active', 'pending', 'pre-register']
+          description: Filter courses by status
+        - in: query
+          name: category
+          schema:
+            type: string
+          description: Filter courses by category ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  statistics:
+                    type: object
+                    properties:
+                      totalCourses:
+                        type: integer
+                      completedCourses:
+                        type: integer
+                      ongoingCourses:
+                        type: integer
+                      totalStudents:
+                        type: integer
+                      latestCourseTime:
+                        type: string
+                  courses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                        coverImage:
+                          type: string
+                        teacher:
+                          type: string
+                        expertise:
+                          type: string
+                        price:
+                          type: number
+                        status:
+                          type: string
+                        level:
+                          type: string
+                        duration:
+                          type: number
+                        type:
+                          type: string
+                        category:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    properties:
+                      currentPage:
+                        type: integer
+                      totalPages:
+                        type: integer
+                      totalCourses:
+                        type: integer
+                      limit:
+                        type: integer
+                  canCreateCourse:
+                    type: boolean
+        '500':
+          description: Server error
+  /basket:
+    get:
+      summary: Get user's shopping cart
+      tags: [Basket]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: string
+                  courses:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        courseId:
+                          type: string
+                        title:
+                          type: string
+                        originalPrice:
+                          type: number
+                        courseDiscountPercent:
+                          type: number
+                        courseDiscountAmount:
+                          type: number
+                        codeDiscountAmount:
+                          type: number
+                        finalPrice:
+                          type: number
+                        discountCode:
+                          type: string
+                          nullable: true
+                  subscriptionPlan:
+                    type: object
+                    nullable: true
+                    properties:
+                      subscriptionPlanId:
+                        type: string
+                      duration:
+                        type: string
+                      price:
+                        type: number
+                  totalPrice:
+                    type: number
+        '500':
+          description: Server error
+    post:
+      summary: Add item to shopping cart
+      tags: [Basket]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                courseId:
+                  type: string
+                  description: ID of the course to add (optional if subscriptionPlanId is provided)
+                subscriptionPlanId:
+                  type: string
+                  description: ID of the subscription plan to add (optional if courseId is provided)
+                discountCode:
+                  type: string
+                  description: Discount code for the course (optional)
+              oneOf:
+                - required: [courseId]
+                - required: [subscriptionPlanId]
+      responses:
+        '200':
+          description: Item added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  basket:
+                    type: object
+        '400':
+          description: Invalid input or item already in basket
+        '404':
+          description: Course, subscription plan, or discount code not found
+        '500':
+          description: Server error
+    delete:
+      summary: Remove item from shopping cart
+      tags: [Basket]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                courseId:
+                  type: string
+                  description: ID of the course to remove (optional if subscriptionPlanId is provided)
+                subscriptionPlanId:
+                  type: string
+                  description: ID of the subscription plan to remove (optional if courseId is provided)
+              oneOf:
+                - required: [courseId]
+                - required: [subscriptionPlanId]
+      responses:
+        '200':
+          description: Item removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  basket:
+                    type: object
+        '400':
+          description: Invalid input or item not in basket
+        '404':
+          description: Basket or item not found
+        '500':
+          description: Server error
+  /basket/checkout:
+    post:
+      summary: Checkout all items in the shopping cart
+      tags: [Basket]
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Payment created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  paymentUrl:
+                    type: string
+                  authority:
+                    type: string
+                  paymentId:
+                    type: string
+                  totalPrice:
+                    type: number
+                  paymentRequired:
+                    type: boolean
+        '400':
+          description: Basket is empty or invalid items
+        '404':
+          description: User or basket not found
+        '500':
+          description: Server error
 security:
   - BearerAuth: []
