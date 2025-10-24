@@ -1,12 +1,16 @@
-
 const axios = require('axios');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
-//-----------------------------------------------------
+const dotenv = require('dotenv');
+//------------------------------------------------------------
+dotenv.config();
+//------------------------------------------------------------
 // PayPing API configuration
 const PAYPING_API_KEY = process.env.PAYPING_API_KEY || 'your-payping-api-key';
 const PAYPING_BASE_URL = 'https://api.payping.ir/v2';
+const MIN_PAYMENT_AMOUNT = 100; // Minimum payment amount in Tomans
+const TEST_MODE = process.env.TEST_MODE === 'true'; // Enable test mode via environment variable
 
 const createSubscriptionPlan = async (req, res) => {
   try {
@@ -101,25 +105,7 @@ const purchaseSubscription = async (req, res) => {
       return res.status(400).json({ message: 'You already have an active VIP subscription' });
     }
 
-    const finalPrice = plan.price;
-
-    if (finalPrice === 0) {
-      const durationMonths = { '1month': 1, '3month': 3, '6month': 6 }[plan.duration];
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
-
-      user.subscription = 'vip';
-      user.subscriptionExpiresAt = expiresAt;
-      await user.save();
-
-      console.log(`User ${userId} activated VIP subscription without payment (final price: 0)`);
-      return res.status(200).json({
-        message: 'VIP subscription activated successfully without payment',
-        subscriptionPlanId,
-        finalPrice,
-        paymentRequired: false
-      });
-    }
+    const finalPrice = Math.max(MIN_PAYMENT_AMOUNT, plan.price);
 
     const payment = new Payment({
       user: userId,
@@ -129,6 +115,21 @@ const purchaseSubscription = async (req, res) => {
       status: 'pending'
     });
     await payment.save();
+
+    // Simulate PayPing payment in test mode
+    if (TEST_MODE) {
+      payment.authority = `test-${Date.now()}`;
+      await payment.save();
+      console.log(`Test mode: Payment created for user ${userId}, subscription plan ${subscriptionPlanId}, authority: ${payment.authority}`);
+      return res.status(200).json({
+        message: 'Payment created successfully (test mode)',
+        paymentUrl: `http://localhost:3000/payment/callback?paymentId=${payment._id}`,
+        authority: payment.authority,
+        paymentId: payment._id,
+        finalPrice,
+        paymentRequired: true
+      });
+    }
 
     const paymentData = {
       amount: finalPrice * 10, 

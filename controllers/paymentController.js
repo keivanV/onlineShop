@@ -4,10 +4,17 @@ const User = require('../models/User');
 const DiscountCode = require('../models/DiscountCode');
 const Payment = require('../models/Payment');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
+const dotenv = require('dotenv');
+//------------------------------------------------------------
+dotenv.config();
 //------------------------------------------------------------
 // PayPing API configuration
 const PAYPING_API_KEY = process.env.PAYPING_API_KEY || 'your-payping-api-key';
 const PAYPING_BASE_URL = 'https://api.payping.ir/v2';
+const MIN_PAYMENT_AMOUNT = 100; // Minimum payment amount in Tomans
+const TEST_MODE = process.env.TEST_MODE === 'true'; // Enable test mode via environment variable
+
+console.log("========================> " , TEST_MODE);
 
 const createPayment = async (req, res) => {
   try {
@@ -79,33 +86,7 @@ const createPayment = async (req, res) => {
       finalPrice -= codeDiscountAmount;
     }
 
-    finalPrice = Math.max(0, finalPrice);
-
-    // If final price is 0, enroll directly
-    if (finalPrice === 0) {
-      course.students.push(userId);
-      await course.save();
-      user.coursesEnrolled.push(courseId);
-      await user.save();
-      if (discountCode) {
-        const discount = await DiscountCode.findOne({ code: discountCode.toUpperCase() });
-        discount.usedBy.push({ user: userId, course: courseId });
-        discount.usedCount += 1;
-        await discount.save();
-      }
-      console.log(`User ${userId} enrolled in course ${courseId} without payment (final price: 0)`);
-      return res.status(200).json({
-        message: 'Enrolled successfully without payment',
-        courseId,
-        originalPrice: course.price || 0,
-        courseDiscountPercent: course.discount || 0,
-        courseDiscountAmount,
-        codeDiscountPercent: discountCode ? (await DiscountCode.findOne({ code: discountCode.toUpperCase() }))?.discountPercent || 0 : 0,
-        codeDiscountAmount,
-        finalPrice,
-        paymentRequired: false
-      });
-    }
+    finalPrice = Math.max(MIN_PAYMENT_AMOUNT, finalPrice); // Ensure minimum payment amount
 
     // Create payment record
     const payment = new Payment({
@@ -113,9 +94,30 @@ const createPayment = async (req, res) => {
       course: courseId,
       amount: finalPrice,
       authority: `pending-${Date.now()}`,
-      status: 'pending'
+      status: 'pending',
+      discountCode: discountCode ? discountCode.toUpperCase() : null
     });
     await payment.save();
+
+    // Simulate PayPing payment in test mode
+    if (TEST_MODE) {
+      payment.authority = `test-${Date.now()}`;
+      await payment.save();
+      console.log(`Test mode: Payment created for user ${userId}, course ${courseId}, authority: ${payment.authority}`);
+      return res.status(200).json({
+        message: 'Payment created successfully (test mode)',
+        paymentUrl: `http://localhost:3000/payment/callback?paymentId=${payment._id}`,
+        authority: payment.authority,
+        paymentId: payment._id,
+        originalPrice: course.price || 0,
+        courseDiscountPercent: course.discount || 0,
+        courseDiscountAmount,
+        codeDiscountPercent: discountCode ? (await DiscountCode.findOne({ code: discountCode.toUpperCase() }))?.discountPercent || 0 : 0,
+        codeDiscountAmount,
+        finalPrice,
+        paymentRequired: true
+      });
+    }
 
     // Create PayPing payment
     const paymentData = {
@@ -179,11 +181,62 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment already processed' });
     }
 
-    if (status !== 'OK') {
+    if (status !== 'OK' && !TEST_MODE) {
       payment.status = 'failed';
       await payment.save();
       console.log(`Payment failed with status: ${status} for paymentId: ${paymentId}`);
       return res.status(400).json({ message: 'Payment failed' });
+    }
+
+    // Simulate PayPing verification in test mode
+    if (TEST_MODE) {
+      payment.status = 'completed';
+      payment.refId = refId || `test-ref-${Date.now()}`;
+      await payment.save();
+
+      const user = payment.user;
+      if (payment.course) {
+        const course = payment.course;
+        course.students.push(user._id);
+        await course.save();
+        user.coursesEnrolled.push(course._id);
+        await user.save();
+        if (payment.discountCode) {
+          const discount = await DiscountCode.findOne({ code: payment.discountCode });
+          if (discount) {
+            discount.usedBy.push({ user: user._id, course: course._id });
+            discount.usedCount += 1;
+            await discount.save();
+          }
+        }
+        console.log(`Test mode: Payment verified: User ${user._id} enrolled in course ${course._id}, refId: ${payment.refId}`);
+        return res.status(200).json({
+          message: 'Payment verified and enrolled in course (test mode)',
+          refId: payment.refId,
+          courseId: course._id
+        });
+      }
+
+      if (payment.subscriptionPlan) {
+        const plan = payment.subscriptionPlan;
+        const durationMonths = { '1month': 1, '3month': 3, '6month': 6 }[plan.duration];
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
+
+        user.subscription = 'vip';
+        user.subscriptionExpiresAt = expiresAt;
+        await user.save();
+        console.log(`Test mode: Payment verified: User ${user._id} activated VIP subscription for ${plan.duration}, refId: ${payment.refId}`);
+        return res.status(200).json({
+          message: 'Payment verified and VIP subscription activated (test mode)',
+          refId: payment.refId,
+          subscriptionPlanId: plan._id,
+          subscriptionExpiresAt: expiresAt
+        });
+      }
+
+      console.log(`Verify payment failed: Invalid payment type for paymentId: ${paymentId}`);
+      return res.status(400).json({ message: 'Invalid payment type' });
     }
 
     // Verify payment with PayPing
@@ -203,13 +256,20 @@ const verifyPayment = async (req, res) => {
       await payment.save();
 
       const user = payment.user;
-     // if user want buy Course 
       if (payment.course) {
         const course = payment.course;
         course.students.push(user._id);
         await course.save();
         user.coursesEnrolled.push(course._id);
         await user.save();
+        if (payment.discountCode) {
+          const discount = await DiscountCode.findOne({ code: payment.discountCode });
+          if (discount) {
+            discount.usedBy.push({ user: user._id, course: course._id });
+            discount.usedCount += 1;
+            await discount.save();
+          }
+        }
         console.log(`Payment verified: User ${user._id} enrolled in course ${course._id}, refId: ${refId}`);
         return res.status(200).json({
           message: 'Payment verified and enrolled in course',
@@ -218,7 +278,6 @@ const verifyPayment = async (req, res) => {
         });
       }
 
-      // if user want buy VIP 
       if (payment.subscriptionPlan) {
         const plan = payment.subscriptionPlan;
         const durationMonths = { '1month': 1, '3month': 3, '6month': 6 }[plan.duration];
