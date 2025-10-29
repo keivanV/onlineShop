@@ -7,7 +7,7 @@ const tempUserSchema = new mongoose.Schema({
   email: { type: String },
   otp: { type: String, required: true },
   otpExpires: { type: Date, required: true },
-  createdAt: { type: Date, default: Date.now, expires: '15m' }
+  createdAt: { type: Date, default: Date.now, expires: '30m' }
 });
 
 module.exports = mongoose.model('TempUser', tempUserSchema);

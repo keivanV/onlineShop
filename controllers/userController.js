@@ -110,6 +110,7 @@ const getAllTeachers = async (req, res) => {
   }
 };
 
+
 const addTeacher = async (req, res) => {
   try {
     const { phone } = req.body;

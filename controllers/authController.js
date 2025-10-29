@@ -9,7 +9,7 @@ const generateTokens = (user) => {
   const accessToken = jwt.sign(
     { id: user._id, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: '15m' }
+    { expiresIn: '30m' }
   );
   const refreshToken = jwt.sign(
     { id: user._id, role: user.role },
@@ -30,7 +30,7 @@ const startAuth = async (req, res) => {
     await TempUser.deleteOne({ phone });
 
     const otp = generateOTP();
-    const otpExpires = Date.now() + 10 * 60 * 1000; // 10 دقیقه
+    const otpExpires = Date.now() + 30 * 60 * 1000; // 30 دقیقه
 
     const existingUser = await User.findOne({ phone });
 
@@ -175,7 +175,7 @@ const refreshToken = async (req, res) => {
       const accessToken = jwt.sign(
         { id: user._id, role: user.role },
         process.env.JWT_SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: '30m' }
       );
 
       res.status(200).json({ accessToken });
