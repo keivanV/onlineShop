@@ -84,6 +84,18 @@ const createCourse = async (req, res) => {
     });
 
     await course.save();
+    const users = await User.find({ role: { $in: ['student'] } });
+    const notifications = users.map(user => ({
+      user: user._id,
+      title: 'دوره جدید!',
+      message: `دوره "${title}" توسط ${teacherName} منتشر شد.`,
+      type: 'course',
+      relatedId: course._id
+    }));
+
+    await Notification.insertMany(notifications);
+
+
     console.log(`Course created: ${title} (ID: ${course._id})`);
     res.status(201).json(course);
   } catch (error) {

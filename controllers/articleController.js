@@ -1,20 +1,23 @@
-
+// controllers/articleController.js
 const Article = require('../models/Article');
 const User = require('../models/User');
 const Category = require('../models/Category');
-const Admin = require('../models/Admin');
-//------------------------------------------------
+
+// Create a new article (Admin only)
 const createArticle = async (req, res) => {
   try {
     const { title, shortDescription, content, featuredImage, category, tags, readingTime, status } = req.body;
-    const adminId = req.user.id; 
-    //-----------------------------------------------
-    const admin = await Admin.findById(adminId);
-    if (!admin) {
+    const adminId = req.user.id;
+
+    // Verify user is admin
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
 
-    if (!(await Category.findById(category))) {
+    // Validate category exists
+    const categoryExists = await Category.findById(category);
+    if (!categoryExists) {
       return res.status(400).json({ message: 'Invalid category' });
     }
 
@@ -23,14 +26,15 @@ const createArticle = async (req, res) => {
       shortDescription,
       content,
       featuredImage,
-      author: adminId, 
+      author: adminId,
       category,
       tags,
       readingTime,
-      status
+      status: status || 'published'
     });
+
     await article.save();
-    console.log(`Article created by admin ${adminId}: ${title}`);
+    console.log(`Article created by admin ${admin.phone}: ${title}`);
     res.status(201).json(article);
   } catch (error) {
     console.error('Create article error:', error);
@@ -38,15 +42,15 @@ const createArticle = async (req, res) => {
   }
 };
 
+// Edit an existing article (Admin only)
 const editArticle = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    const adminId = req.user.id; 
+    const adminId = req.user.id;
 
-
-    const admin = await Admin.findById(adminId);
-    if (!admin) {
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
 
@@ -54,7 +58,8 @@ const editArticle = async (req, res) => {
     if (!article) {
       return res.status(404).json({ message: 'Article not found' });
     }
-    console.log(`Article updated by admin ${adminId}: ${id}`);
+
+    console.log(`Article updated by admin ${admin.phone}: ${id}`);
     res.status(200).json(article);
   } catch (error) {
     console.error('Edit article error:', error);
@@ -62,27 +67,38 @@ const editArticle = async (req, res) => {
   }
 };
 
+// Delete an article (Admin only)
 const deleteArticle = async (req, res) => {
   try {
     const { id } = req.params;
-    const adminId = req.user.id; 
-    //--------------------------------
-    const admin = await Admin.findById(adminId);
-    if (!admin) {
+    const adminId = req.user.id;
+
+    const admin = await User.findById(adminId);
+    if (!admin || admin.role !== 'admin') {
       return res.status(403).json({ message: 'Admin access required' });
     }
-    await Article.findByIdAndDelete(id);
-    console.log(`Article deleted by admin ${adminId}: ${id}`);
-    res.status(200).json({ message: 'Article deleted' });
+
+    const article = await Article.findByIdAndDelete(id);
+    if (!article) {
+      return res.status(404).json({ message: 'Article not found' });
+    }
+
+    console.log(`Article deleted by admin ${admin.phone}: ${id}`);
+    res.status(200).json({ message: 'Article deleted successfully' });
   } catch (error) {
     console.error('Delete article error:', error);
     res.status(500).json({ message: 'Server error while deleting article' });
   }
 };
 
+// Get all articles (public)
 const getArticles = async (req, res) => {
   try {
-    const articles = await Article.find().populate('author', 'username').populate('category', 'name');
+    const articles = await Article.find()
+      .populate('author', 'name family phone')
+      .populate('category', 'name')
+      .sort({ createdAt: -1 });
+
     res.status(200).json(articles);
   } catch (error) {
     console.error('Get articles error:', error);
@@ -90,25 +106,31 @@ const getArticles = async (req, res) => {
   }
 };
 
-
+// Get single article by ID (public)
 const getArticleById = async (req, res) => {
   try {
     const { id } = req.params;
 
     const article = await Article.findById(id)
-      .populate('author', 'username')
+      .populate('author', 'name family phone')
       .populate('category', 'name');
+
     if (!article) {
-      console.log(`Get article failed: Article not found: ${id}`);
-      return res.status(404).json({ message: 'مقاله یافت نشد' });
+      return res.status(404).json({ message: 'Article not found' });
     }
 
     console.log(`Fetched article: ${article.title} (ID: ${id})`);
     res.status(200).json(article);
   } catch (error) {
-    console.error(`Get article error: ${error.message}`, { error });
-    res.status(500).json({ message: 'خطا در دریافت مقاله' });
+    console.error('Get article error:', error);
+    res.status(500).json({ message: 'Server error while fetching article' });
   }
 };
 
-module.exports = { createArticle, editArticle, deleteArticle, getArticles, getArticleById };
+module.exports = {
+  createArticle,
+  editArticle,
+  deleteArticle,
+  getArticles,
+  getArticleById
+};

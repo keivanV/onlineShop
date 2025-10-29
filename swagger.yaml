@@ -1,21 +1,28 @@
-
 openapi: 3.0.3
 info:
   title: Education Platform API
-  description: API for managing students, teachers, categories, courses, articles, discount codes, subscriptions, and user dashboard with JWT authentication, refresh tokens, password reset, and comment moderation.
-  version: 1.0.0
+  description: >-
+    API for managing students, teachers, categories, courses, articles,
+    discount codes, subscriptions and user dashboard **with OTP‑based
+    authentication** (no password).  
+    **Version 2.0.0** – completely password‑less flow.
+  version: 2.0.0
 servers:
   - url: http://localhost:5000/api
     description: Local server
 tags:
   - name: Auth
-    description: Operations related to authentication and authorization
+    description: OTP‑based login / registration & token refresh
   - name: Users
     description: Operations for managing students and teachers
   - name: Categories
     description: Operations for managing course categories
   - name: Courses
     description: Operations for managing courses
+  - name: Podcasts
+    description: Podcast management with audio & cover upload
+  - name: Notifications
+    description: Push-style user notifications with read/unread tracking
   - name: Articles
     description: Operations for managing articles
   - name: Discounts
@@ -30,13 +37,39 @@ tags:
     description: Operations for retrieving homepage data
   - name: Admin
     description: Operations restricted to admin users
+
+    
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  parameters:
+      IdParam:
+        name: id
+        in: path
+        required: true
+        description: Unique identifier for the resource (24-character hex string)
+        schema:
+          type: string
+          pattern: '^[0-9a-fA-F]{24}$'
+          example: 6901e9e92361fec7d871ebcb
+
+      NotificationIdParam:
+        name: notificationId
+        in: path
+        required: true
+        description: Unique identifier for the notification
+        schema:
+          type: string
+          pattern: '^[0-9a-fA-F]{24}$'
+
   schemas:
+    # -------------------------------------------------
+    # USER (no password)
+    # -------------------------------------------------
     User:
       type: object
       properties:
@@ -45,10 +78,6 @@ components:
         family: { type: string }
         phone: { type: string }
         email: { type: string }
-        birthdate: { type: string, format: date }
-        city: { type: string }
-        address: { type: string }
-        profilePic: { type: string }
         role: { type: string, enum: [student, teacher] }
         status: { type: string, enum: [active, ban] }
         subscription: { type: string, enum: [regular, vip] }
@@ -61,14 +90,39 @@ components:
         bio: { type: string }
         lastLogin: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
-      required: [name, family, phone, email, password]
-    Admin:
+        isProfileComplete: { type: boolean }
+      required: [name, family, phone, email, isProfileComplete]
+
+    Tokens:
       type: object
       properties:
-        _id: { type: string }
-        username: { type: string }
-        password: { type: string }
-      required: [username, password]
+        accessToken: { type: string }
+        refreshToken: { type: string }
+      required: [accessToken, refreshToken]
+
+    OTPResponse:
+      type: object
+      properties:
+        message: { type: string }
+        requiresCompletion: { type: boolean }
+      required: [message, requiresCompletion]
+
+    VerifyOTPResponse:
+      type: object
+      properties:
+        message: { type: string }
+        requiresCompletion: { type: boolean }
+        tempUserId: { type: string, nullable: true }
+        accessToken: { type: string, nullable: true }
+        refreshToken: { type: string, nullable: true }
+      required: [message, requiresCompletion]
+
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+      required: [message]
+
     Category:
       type: object
       properties:
@@ -79,6 +133,7 @@ components:
         displayOrder: { type: number }
         courseCount: { type: number }
       required: [name, displayOrder]
+
     Comment:
       type: object
       properties:
@@ -88,6 +143,7 @@ components:
         status: { type: string, enum: [pending, approved], default: pending }
         createdAt: { type: string, format: date-time }
       required: [user, text, status]
+
     Course:
       type: object
       properties:
@@ -132,7 +188,101 @@ components:
         comments:
           type: array
           items: { $ref: '#/components/schemas/Comment' }
-      required: [coverImage, title, category, teacher, status, level, duration, presentationMethod, type]
+      required:
+        - coverImage
+        - title
+        - category
+        - teacher
+        - status
+        - level
+        - duration
+        - presentationMethod
+        - type
+    CreatePodcastRequest:
+      type: object
+      required: [title, duration, episode, audio, coverImage]
+      properties:
+        title:
+          type: string
+          example: "JavaScript Fundamentals"
+        description:
+          type: string
+          example: "Introduction to modern JavaScript concepts."
+        duration:
+          type: integer
+          example: 45
+          description: Duration in minutes
+        episode:
+          type: integer
+          example: 1
+          description: Episode number (unique per podcast series)
+        tags:
+          type: string
+          example: '["javascript","beginner","programming"]'
+          description: JSON string of tags
+        audio:
+          type: string
+          format: binary
+          description: MP3 audio file (max 50MB)
+        coverImage:
+          type: string
+          format: binary
+          description: Cover image (JPG/PNG)
+    Podcast:
+      allOf:
+        - $ref: '#/components/schemas/CreatePodcastRequest'
+        - type: object
+          properties:
+            _id: { type: string }
+            audioUrl:
+              type: string
+              example: "http://localhost:5000/uploads/podcasts/audio/podcast-1728000000000.mp3"
+            coverImage:
+              type: string
+              example: "http://localhost:5000/uploads/podcasts/cover/cover-1728000000000.jpg"
+            tags:
+              type: array
+              items: { type: string }
+            publishedAt:
+              type: string
+              format: date-time
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    Notification:
+          type: object
+          properties:
+            _id: { type: string }
+            user: { type: string }
+            title: { type: string, example: "New Podcast!" }
+            message: { type: string, example: "Episode 1 of JavaScript series is now live." }
+            type: { type: string, enum: [course, podcast, system] }
+            relatedId: { type: string }
+            isRead: { type: boolean, default: false }
+            createdAt: { type: string, format: date-time }
+          required: [title, message, type]
+
+    NotificationsResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+        unreadCount:
+          type: integer
+          example: 3
+
+    # ================================
+    # REUSABLE
+    # ================================
+    SuccessMessage:
+      type: object
+      properties:
+        message: { type: string }
+
     Article:
       type: object
       properties:
@@ -146,6 +296,7 @@ components:
         readingTime: { type: number }
         status: { type: string, enum: [draft, published] }
       required: [title, shortDescription, content, featuredImage, category, readingTime, status]
+
     DiscountCode:
       type: object
       properties:
@@ -166,6 +317,7 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
       required: [code, discountPercent, maxUses]
+
     SubscriptionPlan:
       type: object
       properties:
@@ -174,6 +326,7 @@ components:
         price: { type: number }
         updatedAt: { type: string, format: date-time }
       required: [duration, price]
+
     Payment:
       type: object
       properties:
@@ -187,6 +340,7 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
       required: [user, amount, authority, status]
+
     VideoAccess:
       type: object
       properties:
@@ -201,17 +355,7 @@ components:
             streamingLink: { type: string }
             downloadLink: { type: string }
       required: [message, video]
-    Error:
-      type: object
-      properties:
-        message: { type: string }
-      required: [message]
-    Tokens:
-      type: object
-      properties:
-        accessToken: { type: string }
-        refreshToken: { type: string }
-      required: [accessToken, refreshToken]
+
     UserDashboardResponse:
       type: object
       properties:
@@ -225,7 +369,12 @@ components:
               title: { type: string }
               coverImage: { type: string }
               category: { type: object, properties: { name: { type: string } } }
-              teacher: { type: object, properties: { name: { type: string }, family: { type: string }, expertise: { type: string } } }
+              teacher:
+                type: object
+                properties:
+                  name: { type: string }
+                  family: { type: string }
+                  expertise: { type: string }
               status: { type: string }
               level: { type: string }
               duration: { type: number }
@@ -247,10 +396,44 @@ components:
               price: { type: number }
               studentCount: { type: number }
       required: [role, enrolledCourses, taughtCourses]
+
+
+  responses:
+      Unauthorized:
+        description: Invalid or missing token
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error' }
+      Forbidden:
+        description: Admin access required
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error' }
+      BadRequest:
+        description: Invalid input
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error' }
+      NotFound:
+        description: Resource not found
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error' }
+      ServerError:
+        description: Internal server error
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Error' }
+
+# ==============================================================
+# ===========================  PATHS  ==========================
+# ==============================================================
+
 paths:
-  /auth/register:
+  # -------------------  AUTH  -------------------
+  /auth/start:
     post:
-      summary: Register a new user (student)
+      summary: Send OTP (login / registration start)
       tags: [Auth]
       requestBody:
         required: true
@@ -259,29 +442,16 @@ paths:
             schema:
               type: object
               properties:
-                name: { type: string }
-                family: { type: string }
                 phone: { type: string }
-                email: { type: string }
-                password: { type: string }
-                confirmPassword: { type: string }
-                birthdate: { type: string, format: date }
-                city: { type: string }
-                address: { type: string }
-                profilePic: { type: string }
-              required: [name, family, phone, email, password, confirmPassword]
+              required: [phone]
       responses:
         '200':
           description: OTP sent
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  otp: { type: string }
+              schema: { $ref: '#/components/schemas/OTPResponse' }
         '400':
-          description: Bad request (e.g., missing fields, passwords don't match)
+          description: Phone required
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -295,9 +465,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-  /auth/verify-otp:
+
+  /auth/verify:
     post:
-      summary: Verify OTP to complete registration
+      summary: Verify OTP
       tags: [Auth]
       requestBody:
         required: true
@@ -311,10 +482,12 @@ paths:
               required: [phone, otp]
       responses:
         '200':
-          description: Registration completed
+          description: >-
+            Existing user → login tokens  
+            New user → tempUserId + requiresCompletion:true
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Tokens' }
+              schema: { $ref: '#/components/schemas/VerifyOTPResponse' }
         '400':
           description: Invalid or expired OTP
           content:
@@ -325,9 +498,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-  /auth/forgot-password:
+
+  /auth/complete:
     post:
-      summary: Request OTP for password reset
+      summary: Complete registration (new users only)
       tags: [Auth]
       requestBody:
         required: true
@@ -336,100 +510,23 @@ paths:
             schema:
               type: object
               properties:
-                phone: { type: string }
-              required: [phone]
+                tempUserId: { type: string }
+                name: { type: string }
+                family: { type: string }
+                email: { type: string }
+                birthdate: { type: string, format: date }
+                city: { type: string }
+                address: { type: string }
+                profilePic: { type: string }
+              required: [tempUserId, name, family, email]
       responses:
-        '200':
-          description: OTP sent for password reset
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  otp: { type: string }
-        '400':
-          description: Bad request (e.g., missing phone)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '429':
-          description: Rate limit exceeded for OTP request
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-  /auth/reset-password:
-    post:
-      summary: Reset password using OTP
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                phone: { type: string }
-                otp: { type: string }
-                newPassword: { type: string }
-                confirmNewPassword: { type: string }
-              required: [phone, otp, newPassword, confirmNewPassword]
-      responses:
-        '200':
-          description: Password reset successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-        '400':
-          description: Bad request (e.g., invalid OTP, passwords don't match)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '404':
-          description: User not found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-  /auth/login-user:
-    post:
-      summary: Login as user (student/teacher)
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                phone: { type: string }
-                password: { type: string }
-              required: [phone, password]
-      responses:
-        '200':
-          description: Successful login
+        '201':
+          description: Registration finished → tokens
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Tokens' }
         '400':
-          description: Invalid credentials or missing fields
+          description: Invalid session / missing fields
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -438,36 +535,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
-  /auth/login-admin:
-    post:
-      summary: Login as admin
-      tags: [Auth]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                username: { type: string }
-                password: { type: string }
-              required: [username, password]
-      responses:
-        '200':
-          description: Successful login
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Tokens' }
-        '400':
-          description: Invalid credentials or missing fields
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+
   /auth/refresh:
     post:
       summary: Refresh access token
@@ -505,6 +573,118 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+
+
+  /podcasts:
+      get:
+        summary: Get all podcasts
+        description: Returns all podcasts sorted by episode (descending).
+        tags: [Podcasts]
+        responses:
+          '200':
+            description: List of podcasts with full URLs
+            content:
+              application/json:
+                schema:
+                  type: array
+                  items: { $ref: '#/components/schemas/Podcast' }
+          '500':
+            $ref: '#/components/responses/ServerError'
+
+      post:
+        summary: Create a new podcast (Admin only)
+        description: Upload audio and cover image. Files are stored on server.
+        tags: [Podcasts, Admin]
+        security:
+          - BearerAuth: []
+        requestBody:
+          required: true
+          content:
+            multipart/form-data:
+              schema:
+                $ref: '#/components/schemas/CreatePodcastRequest'
+        responses:
+          '201':
+            description: Podcast created with full URLs
+            content:
+              application/json:
+                schema: { $ref: '#/components/schemas/Podcast' }
+          '400':
+            $ref: '#/components/responses/BadRequest'
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+          '403':
+            $ref: '#/components/responses/Forbidden'
+          '500':
+            $ref: '#/components/responses/ServerError'
+
+  /podcasts/{id}:
+    delete:
+      summary: Delete a podcast (Admin only)
+      description: Deletes podcast, its files, and related notifications.
+      tags: [Podcasts, Admin]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Podcast and associated files deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessMessage' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+
+  /notifications:
+      get:
+        summary: Get user notifications
+        description: Returns all notifications with unread count.
+        tags: [Notifications]
+        security:
+          - BearerAuth: []
+        responses:
+          '200':
+            description: Notifications with unread count
+            content:
+              application/json:
+                schema: { $ref: '#/components/schemas/NotificationsResponse' }
+          '401':
+            $ref: '#/components/responses/Unauthorized'
+
+      put:
+        summary: Mark all notifications as read
+        tags: [Notifications]
+        security:
+          - BearerAuth: []
+        responses:
+          '200':
+            description: All notifications marked as read
+            content:
+              application/json:
+                schema: { $ref: '#/components/schemas/SuccessMessage' }
+
+  /notifications/read/{notificationId}:
+    put:
+      summary: Mark a single notification as read
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdParam'
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuccessMessage' }
+  # -------------------  USERS  -------------------
   /users/students:
     get:
       summary: Get all students by admin
@@ -548,6 +728,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /users/students/{phone}:
     put:
       summary: Edit student by admin
@@ -608,9 +789,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /users/profile:
     put:
-      summary: Edit own profile (user)
+      summary: Edit own profile (requires completed profile)
       tags: [Users]
       security:
         - BearerAuth: []
@@ -628,8 +810,6 @@ paths:
                 city: { type: string }
                 address: { type: string }
                 profilePic: { type: string }
-                newPassword: { type: string }
-                confirmNewPassword: { type: string }
       responses:
         '200':
           description: Updated profile
@@ -637,7 +817,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '400':
-          description: Bad request (e.g., missing fields, passwords don't match)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -646,6 +826,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Profile must be completed first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  requiresCompletion: { type: boolean }
         '404':
           description: User not found
           content:
@@ -656,6 +845,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /users/teachers:
     get:
       summary: Get all teachers by admin
@@ -695,6 +885,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Add a new teacher by admin
       tags: [Users, Admin]
@@ -740,6 +931,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /users/teachers/{phone}:
     put:
       summary: Edit teacher by admin
@@ -775,7 +967,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '400':
-          description: Bad request (e.g., phone already in use)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -799,9 +991,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /users/dashboard:
     get:
-      summary: Get user dashboard with enrolled and taught courses
+      summary: Get user dashboard with enrolled and taught courses (requires completed profile)
       tags: [Users]
       security:
         - BearerAuth: []
@@ -816,6 +1009,15 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: Profile not completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  requiresCompletion: { type: boolean }
         '404':
           description: User not found
           content:
@@ -826,6 +1028,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  CATEGORIES  -------------------
   /categories:
     get:
       summary: Get all categories
@@ -858,6 +1062,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Create a new category by admin
       tags: [Categories, Admin]
@@ -882,7 +1087,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Category' }
         '400':
-          description: Bad request (e.g., name already in use)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -901,6 +1106,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /categories/{id}:
     put:
       summary: Edit a category by admin
@@ -922,7 +1128,7 @@ paths:
                 name: { type: string }
                 tags: { type: array, items: { type: string } }
                 description: { type: string }
-                displayOrder: { type: number }
+                displayOrder: {type: number }
               required: [name, displayOrder]
       responses:
         '200':
@@ -931,7 +1137,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Category' }
         '400':
-          description: Bad request (e.g., name already in use)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -955,6 +1161,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  COURSES  -------------------
   /courses:
     get:
       summary: Get all courses with optional status filter
@@ -976,43 +1184,24 @@ paths:
                 items:
                   type: object
                   properties:
-                    _id:
-                      type: string
-                    title:
-                      type: string
-                    category:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                    teacher:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        family:
-                          type: string
-                        expertise:
-                          type: string
-                    teacherName:
-                      type: string
-                    studentCount:
-                      type: integer
-                    expertise:
-                      type: string
-                    status:
-                      type: string
-                      enum: ['active', 'pending', 'pre-register']
-                    level:
-                      type: string
-                    duration:
-                      type: number
-                    type:
-                      type: string
-                    price:
-                      type: number
+                    _id: { type: string }
+                    title: { type: string }
+                    category: { type: object, properties: { name: { type: string } } }
+                    teacher: { type: object, properties: { name: { type: string }, family: { type: string }, expertise: { type: string } } }
+                    teacherName: { type: string }
+                    studentCount: { type: integer }
+                    expertise: { type: string }
+                    status: { type: string, enum: ['active', 'pending', 'pre-register'] }
+                    level: { type: string }
+                    duration: { type: number }
+                    type: { type: string }
+                    price: { type: number }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Create a new course by admin
       tags: [Courses, Admin]
@@ -1049,6 +1238,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{id}:
     put:
       summary: Edit a course by admin
@@ -1096,6 +1286,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     delete:
       summary: Delete a course by admin
       tags: [Courses, Admin]
@@ -1135,6 +1326,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{idOrName}:
     get:
       summary: Get a course by ID or name
@@ -1168,6 +1360,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/enroll:
     post:
       summary: Enroll in a course with optional discount code
@@ -1201,7 +1394,7 @@ paths:
                   codeDiscountAmount: { type: number }
                   finalPrice: { type: number }
         '400':
-          description: Bad request (e.g., already enrolled, invalid discount code)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1225,6 +1418,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{courseId}/comments:
     post:
       summary: Add a comment to a course
@@ -1280,6 +1474,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     get:
       summary: Get approved comments for a course
       tags: [Courses]
@@ -1313,6 +1508,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{courseId}/comments/pending:
     get:
       summary: Get pending comments for a course by admin
@@ -1352,6 +1548,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{courseId}/comments/{commentId}/approve:
     put:
       summary: Approve a comment by admin
@@ -1377,7 +1574,7 @@ paths:
                 properties:
                   message: { type: string }
         '400':
-          description: Bad request (e.g., comment not pending)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1401,6 +1598,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /courses/{courseId}/chapters/{chapterId}/videos/{videoId}:
     get:
       summary: Access a course video
@@ -1427,7 +1625,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/VideoAccess' }
         '400':
-          description: Bad request (e.g., invalid presentation method)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1451,6 +1649,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  ARTICLES  -------------------
   /articles:
     get:
       summary: Get all articles
@@ -1470,6 +1670,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Create a new article by admin
       tags: [Articles, Admin]
@@ -1506,6 +1707,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /articles/{id}:
     get:
       summary: Get a single article by ID
@@ -1514,9 +1716,7 @@ paths:
         - in: path
           name: id
           required: true
-          schema:
-            type: string
-          description: The ID of the article to retrieve
+          schema: { type: string }
       responses:
         '200':
           description: Successful response
@@ -1525,45 +1725,30 @@ paths:
               schema:
                 type: object
                 properties:
-                  _id:
-                    type: string
-                  title:
-                    type: string
-                  shortDescription:
-                    type: string
-                  content:
-                    type: string
-                  featuredImage:
-                    type: string
-                  author:
-                    type: object
-                    properties:
-                      username:
-                        type: string
-                  category:
-                    type: object
-                    properties:
-                      name:
-                        type: string
-                  tags:
-                    type: array
-                    items:
-                      type: string
-                  readingTime:
-                    type: number
-                  status:
-                    type: string
-                    enum: ['draft', 'published']
-                  createdAt:
-                    type: string
-                    format: date-time
-                  updatedAt:
-                    type: string
-                    format: date-time
+                  _id: { type: string }
+                  title: { type: string }
+                  shortDescription: { type: string }
+                  content: { type: string }
+                  featuredImage: { type: string }
+                  author: { type: object, properties: { username: { type: string } } }
+                  category: { type: object, properties: { name: { type: string } } }
+                  tags: { type: array, items: { type: string } }
+                  readingTime: { type: number }
+                  status: { type: string, enum: ['draft', 'published'] }
+                  createdAt: { type: string, format: date-time }
+                  updatedAt: { type: string, format: date-time }
         '404':
           description: Article not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  DISCOUNTS  -------------------
   /discounts:
     get:
       summary: Get all discount codes by admin
@@ -1593,6 +1778,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Create a new discount code by admin
       tags: [Discounts, Admin]
@@ -1618,7 +1804,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DiscountCode' }
         '400':
-          description: Bad request (e.g., code already in use, invalid percent)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1637,6 +1823,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /discounts/{id}:
     put:
       summary: Edit a discount code by admin
@@ -1667,7 +1854,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DiscountCode' }
         '400':
-          description: Bad request (e.g., code already in use, invalid percent)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1691,6 +1878,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /discounts/apply:
     post:
       summary: Apply a discount code to a course
@@ -1722,7 +1910,7 @@ paths:
                   codeDiscountAmount: { type: number }
                   finalPrice: { type: number }
         '400':
-          description: Bad request (e.g., code inactive, max uses reached)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1741,6 +1929,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  SUBSCRIPTIONS  -------------------
   /subscriptions/plans:
     get:
       summary: Get all subscription plans
@@ -1765,6 +1955,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Create a new subscription plan by admin
       tags: [Subscriptions, Admin]
@@ -1787,7 +1978,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SubscriptionPlan' }
         '400':
-          description: Bad request (e.g., invalid duration, plan exists)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1806,6 +1997,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /subscriptions/plans/{id}:
     put:
       summary: Update a subscription plan by admin
@@ -1833,7 +2025,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SubscriptionPlan' }
         '400':
-          description: Bad request (e.g., invalid price)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1857,6 +2049,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /subscriptions/purchase:
     post:
       summary: Purchase a subscription plan
@@ -1874,7 +2067,7 @@ paths:
               required: [subscriptionPlanId]
       responses:
         '200':
-          description: Payment created or subscription activated without payment
+          description: Payment created or subscription activated
           content:
             application/json:
               schema:
@@ -1889,7 +2082,7 @@ paths:
                   subscriptionPlanId: { type: string }
                   subscriptionExpiresAt: { type: string, format: date-time }
         '400':
-          description: Bad request (e.g., invalid subscription plan, active subscription exists)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1908,6 +2101,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  PAYMENTS  -------------------
   /payments:
     post:
       summary: Create a payment for a course
@@ -1944,7 +2139,7 @@ paths:
                   finalPrice: { type: number }
                   paymentRequired: { type: boolean }
         '400':
-          description: Bad request (e.g., already enrolled, invalid discount code)
+          description: Bad request
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -1963,6 +2158,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
   /payments/verify:
     get:
       summary: Verify a payment
@@ -1970,18 +2166,15 @@ paths:
       parameters:
         - in: query
           name: paymentId
-          schema:
-            type: string
+          schema: { type: string }
           required: true
         - in: query
           name: refId
-          schema:
-            type: string
+          schema: { type: string }
           required: true
         - in: query
           name: status
-          schema:
-            type: string
+          schema: { type: string }
           required: true
       responses:
         '200':
@@ -2011,6 +2204,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  HOMEPAGE  -------------------
   /homepage:
     get:
       summary: Get homepage data with statistics and paginated courses
@@ -2018,27 +2213,16 @@ paths:
       parameters:
         - in: query
           name: page
-          schema:
-            type: integer
-            default: 1
-          description: Page number for pagination
+          schema: { type: integer, default: 1 }
         - in: query
           name: limit
-          schema:
-            type: integer
-            default: 3
-          description: Number of courses per page
+          schema: { type: integer, default: 3 }
         - in: query
           name: status
-          schema:
-            type: string
-            enum: ['active', 'pending', 'pre-register']
-          description: Filter courses by status
+          schema: { type: string, enum: ['active', 'pending', 'pre-register'] }
         - in: query
           name: category
-          schema:
-            type: string
-          description: Filter courses by category ID
+          schema: { type: string }
       responses:
         '200':
           description: Successful response
@@ -2050,61 +2234,43 @@ paths:
                   statistics:
                     type: object
                     properties:
-                      totalCourses:
-                        type: integer
-                      completedCourses:
-                        type: integer
-                      ongoingCourses:
-                        type: integer
-                      totalStudents:
-                        type: integer
-                      latestCourseTime:
-                        type: string
+                      totalCourses: { type: integer }
+                      completedCourses: { type: integer }
+                      ongoingCourses: { type: integer }
+                      totalStudents: { type: integer }
+                      latestCourseTime: { type: string }
                   courses:
                     type: array
                     items:
                       type: object
                       properties:
-                        id:
-                          type: string
-                        title:
-                          type: string
-                        coverImage:
-                          type: string
-                        teacher:
-                          type: string
-                        expertise:
-                          type: string
-                        price:
-                          type: number
-                        status:
-                          type: string
-                        level:
-                          type: string
-                        duration:
-                          type: number
-                        type:
-                          type: string
-                        category:
-                          type: string
-                        createdAt:
-                          type: string
-                          format: date-time
+                        id: { type: string }
+                        title: { type: string }
+                        coverImage: { type: string }
+                        teacher: { type: string }
+                        expertise: { type: string }
+                        price: { type: number }
+                        status: { type: string }
+                        level: { type: string }
+                        duration: { type: number }
+                        type: { type: string }
+                        category: { type: string }
+                        createdAt: { type: string, format: date-time }
                   pagination:
                     type: object
                     properties:
-                      currentPage:
-                        type: integer
-                      totalPages:
-                        type: integer
-                      totalCourses:
-                        type: integer
-                      limit:
-                        type: integer
-                  canCreateCourse:
-                    type: boolean
+                      currentPage: { type: integer }
+                      totalPages: { type: integer }
+                      totalCourses: { type: integer }
+                      limit: { type: integer }
+                  canCreateCourse: { type: boolean }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # -------------------  BASKET  -------------------
   /basket:
     get:
       summary: Get user's shopping cart
@@ -2119,44 +2285,34 @@ paths:
               schema:
                 type: object
                 properties:
-                  user:
-                    type: string
+                  user: { type: string }
                   courses:
                     type: array
                     items:
                       type: object
                       properties:
-                        courseId:
-                          type: string
-                        title:
-                          type: string
-                        originalPrice:
-                          type: number
-                        courseDiscountPercent:
-                          type: number
-                        courseDiscountAmount:
-                          type: number
-                        codeDiscountAmount:
-                          type: number
-                        finalPrice:
-                          type: number
-                        discountCode:
-                          type: string
-                          nullable: true
+                        courseId: { type: string }
+                        title: { type: string }
+                        originalPrice: { type: number }
+                        courseDiscountPercent: { type: number }
+                        courseDiscountAmount: { type: number }
+                        codeDiscountAmount: { type: number }
+                        finalPrice: { type: number }
+                        discountCode: { type: string, nullable: true }
                   subscriptionPlan:
                     type: object
                     nullable: true
                     properties:
-                      subscriptionPlanId:
-                        type: string
-                      duration:
-                        type: string
-                      price:
-                        type: number
-                  totalPrice:
-                    type: number
+                      subscriptionPlanId: { type: string }
+                      duration: { type: string }
+                      price: { type: number }
+                  totalPrice: { type: number }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
     post:
       summary: Add item to shopping cart
       tags: [Basket]
@@ -2169,15 +2325,9 @@ paths:
             schema:
               type: object
               properties:
-                courseId:
-                  type: string
-                  description: ID of the course to add (optional if subscriptionPlanId is provided)
-                subscriptionPlanId:
-                  type: string
-                  description: ID of the subscription plan to add (optional if courseId is provided)
-                discountCode:
-                  type: string
-                  description: Discount code for the course (optional)
+                courseId: { type: string }
+                subscriptionPlanId: { type: string }
+                discountCode: { type: string }
               oneOf:
                 - required: [courseId]
                 - required: [subscriptionPlanId]
@@ -2189,16 +2339,24 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  basket:
-                    type: object
+                  message: { type: string }
+                  basket: { type: object }
         '400':
           description: Invalid input or item already in basket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404':
           description: Course, subscription plan, or discount code not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
     delete:
       summary: Remove item from shopping cart
       tags: [Basket]
@@ -2211,12 +2369,8 @@ paths:
             schema:
               type: object
               properties:
-                courseId:
-                  type: string
-                  description: ID of the course to remove (optional if subscriptionPlanId is provided)
-                subscriptionPlanId:
-                  type: string
-                  description: ID of the subscription plan to remove (optional if courseId is provided)
+                courseId: { type: string }
+                subscriptionPlanId: { type: string }
               oneOf:
                 - required: [courseId]
                 - required: [subscriptionPlanId]
@@ -2228,16 +2382,24 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  basket:
-                    type: object
+                  message: { type: string }
+                  basket: { type: object }
         '400':
           description: Invalid input or item not in basket
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404':
           description: Basket or item not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /basket/checkout:
     post:
       summary: Checkout all items in the shopping cart
@@ -2252,23 +2414,33 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
-                  paymentUrl:
-                    type: string
-                  authority:
-                    type: string
-                  paymentId:
-                    type: string
-                  totalPrice:
-                    type: number
-                  paymentRequired:
-                    type: boolean
+                  message: { type: string }
+                  paymentUrl: { type: string }
+                  authority: { type: string }
+                  paymentId: { type: string }
+                  totalPrice: { type: number }
+                  paymentRequired: { type: boolean }
         '400':
           description: Basket is empty or invalid items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404':
           description: User or basket not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '500':
           description: Server error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+# ==============================================================
+# ======================  REUSABLE RESPONSES  ===================
+# ==============================================================
+
+
+
 security:
   - BearerAuth: []
