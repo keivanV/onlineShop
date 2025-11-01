@@ -1,3 +1,4 @@
+// models/Course.js
 const mongoose = require('mongoose');
 
 /* ------------------------------------------------------------------ */
@@ -7,16 +8,15 @@ const mongoose = require('mongoose');
 const videoSchema = new mongoose.Schema({
   title:       { type: String, required: true },
   description: { type: String },
-  duration:    { type: Number, required: true }, // in minutes
-  time:        { type: String },                 // e.g., '10:00'
-  filePath:    { type: String, required: true }  // relative path: chapters/chapter_1/video_1.mp4
+  duration:    { type: Number, required: true }, // seconds
+  time:        { type: String },                 // e.g. "10:30"
+  videoUrl:    { type: String, required: true }  // external URL (YouTube, Vimeo, CDN …)
 });
 
 const chapterSchema = new mongoose.Schema({
   title:       { type: String, required: true },
-  duration:    { type: Number, required: true },
+  duration:    { type: Number, required: true }, // seconds (sum of videos)
   description: { type: String },
-  folderPath:  { type: String, required: true }, // e.g., chapters/chapter_1
   videos:      [videoSchema]
 });
 
@@ -24,7 +24,7 @@ const commentSchema = new mongoose.Schema({
   user:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   text:      { type: String, required: true },
   rating:    { type: Number, min: 0, max: 5 },
-  status:    { type: String, enum: ['pending', 'approved'], default: 'pending' },
+  status:    { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -34,45 +34,45 @@ const commentSchema = new mongoose.Schema({
 
 const courseSchema = new mongoose.Schema(
   {
-    courseFolder:      { type: String, required: true, unique: true }, // e.g., course_60f1a2b3c4d5e6f7g8h9i0j1
-    coverImage:        { type: String, required: true }, // relative: course_xxx/cover.jpg
+    description:       { type: String, required: true },
+    // Unique folder name is no longer needed – we keep only coverImage
+    coverImage:        { type: String, required: true }, // relative path: courses/course_xxx/cover.jpg
     title:             { type: String, required: true },
-    category:          { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+    category:          [{ type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true }],
     teacher:           { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     status:            { type: String, enum: ['active', 'pending', 'pre-register'], required: true },
     level:             { type: String, enum: ['beginner', 'intermediate', 'advanced'], required: true },
-    duration:          { type: Number, required: true },
-    previewVideo:      { type: String }, // relative path
+    duration:          { type: Number, required: true }, // total course duration (seconds)
+    previewVideoUrl:   { type: String },                 // external preview link
     presentationMethod:{ type: String, enum: ['download', 'streaming'], required: true },
-    downloadFolder:    { type: String }, // e.g., download/
-    prerequisites:     [{ type: mongoose.Schema.Types.ObjectId, ref: 'Course' }],
     type:              { type: String, enum: ['free', 'vip', 'paid'], required: true },
     price:             { type: Number },
     discount:          { type: Number, default: 0 },
     discountEnd:       { type: Date },
     chapters:          [chapterSchema],
     students:          [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    rating:            { type: Number, default: 0 },
-    expertise:         { type: String },
     comments:          [commentSchema]
   },
   { timestamps: true }
 );
 
 /* ------------------------------------------------------------------ */
-/* Pre-save: Validate paths & cleanup for non-paid                    */
+/* Pre-save validation                                                */
 /* ------------------------------------------------------------------ */
 courseSchema.pre('save', function (next) {
+  // Paid courses must have a positive price
   if (this.type === 'paid' && (!this.price || this.price < 0)) {
     return next(new Error('Price is required for paid courses'));
   }
 
+  // Non-paid courses clear price / discount fields
   if (this.type !== 'paid') {
     this.price = undefined;
     this.discount = 0;
     this.discountEnd = undefined;
   }
 
+  // Discount must have an end date when > 0
   if (this.discount > 0 && !this.discountEnd) {
     return next(new Error('discountEnd required when discount > 0'));
   }

@@ -1,119 +1,70 @@
+// routes/courses.js
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const {
-  getCourses,
-  createCourse,
-  editCourse,
-  deleteCourse,
-  enrollCourse,
-  accessCourseVideo,
-  addComment,
-  getComments,
-  approveComment,
-  getPendingComments,
-  getCourse
-} = require('../controllers/courseController');
-const { createPayment } = require('../controllers/paymentController');
+const fs = require('fs');
 const { verifyToken, verifyAdmin } = require('../middleware/auth');
+const {
+  getCourses, createCourse, editCourse, deleteCourse,
+  enrollCourse, addComment, getComments,
+  approveComment, getPendingComments, getCourse
+} = require('../controllers/courseController');
 
 const router = express.Router();
 
 /* ------------------------------------------------------------------ */
-/* Multer Configuration: Handle ANY uploaded file (cover, preview, videos) */
+/* Multer – accept ONLY the coverImage (image)                        */
 /* ------------------------------------------------------------------ */
+const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
-    cb(null, tempDir);
+    fs.mkdir(tempDir, { recursive: true }, (err) => {
+      if (err) return cb(err);
+      cb(null, tempDir);
+    });
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}_${file.originalname}`);
+    const uniqueName = `${Date.now()}_${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB per file
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/', 'video/'];
-    if (allowedTypes.some(type => file.mimetype.startsWith(type))) {
+    if (file.fieldname === 'coverImage' && file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('فقط فایل‌های تصویری و ویدیویی مجاز هستند'));
+      cb(new Error('فقط فایل تصویری برای coverImage مجاز است'));
     }
   }
 });
 
 /* ------------------------------------------------------------------ */
-/* Public Routes                                                      */
+/* Public routes                                                      */
 /* ------------------------------------------------------------------ */
-
 router.get('/', getCourses);
-router.get('/:idOrName', getCourse);
 
 /* ------------------------------------------------------------------ */
-/* Admin Routes — Create & Edit Course (ANY number of chapters/videos) */
+/* Admin routes – create / edit (coverImage only)                     */
 /* ------------------------------------------------------------------ */
-
-// POST /api/courses → Create course
-router.post(
-  '/',
-  verifyToken,
-  verifyAdmin,
-  upload.any(), // har tedad file ba har onvan
-  createCourse
-);
-
-// PUT /api/courses/:id → Edit course (supports adding videos to ANY chapter)
-router.put(
-  '/:id',
-  verifyToken,
-  verifyAdmin,
-  upload.any(), // -> chapters[999].videos[999].file)
-  editCourse
-);
-
-// DELETE /api/courses/:id
+router.post('/', verifyToken, verifyAdmin, upload.single('coverImage'), createCourse);
+router.put('/:id', verifyToken, verifyAdmin, upload.single('coverImage'), editCourse);
 router.delete('/:id', verifyToken, verifyAdmin, deleteCourse);
 
 /* ------------------------------------------------------------------ */
-/* Enrollment & Payment                                               */
+/* Enrollment & payment                                               */
 /* ------------------------------------------------------------------ */
-
 router.post('/enroll', verifyToken, enrollCourse);
-router.post('/pay', verifyToken, createPayment);
 
 /* ------------------------------------------------------------------ */
 /* Comments                                                           */
 /* ------------------------------------------------------------------ */
-
 router.post('/:courseId/comments', verifyToken, addComment);
 router.get('/:courseId/comments', getComments);
-
-/* ------------------------------------------------------------------ */
-/* Admin: Comment Moderation                                          */
-/* ------------------------------------------------------------------ */
-
 router.get('/:courseId/comments/pending', verifyToken, verifyAdmin, getPendingComments);
-router.put(
-  '/:courseId/comments/:commentId/approve',
-  verifyToken,
-  verifyAdmin,
-  approveComment
-);
+router.put('/:courseId/comments/:commentId/approve', verifyToken, verifyAdmin, approveComment);
 
-/* ------------------------------------------------------------------ */
-/* Video Access                                                       */
-/* ------------------------------------------------------------------ */
-
-router.get(
-  '/:courseId/chapters/:chapterId/videos/:videoId',
-  verifyToken,
-  accessCourseVideo
-);
-
-/* ------------------------------------------------------------------ */
-/* Export Router                                                      */
-/* ------------------------------------------------------------------ */
 module.exports = router;

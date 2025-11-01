@@ -14,7 +14,103 @@ const PAYPING_BASE_URL = 'https://api.payping.ir/v2';
 const MIN_PAYMENT_AMOUNT = 100; // Minimum payment amount in Tomans
 const TEST_MODE = process.env.TEST_MODE === 'true'; // Enable test mode via environment variable
 
-console.log("========================> " , TEST_MODE);
+
+/**
+ * GET /api/payments/history
+ * GET /api/payments/history/user/:userId (admin)
+ * GET /api/payments/history/all (admin)
+ */
+const getPaymentHistory = async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const requesterId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    let query = {};
+
+    // ادمین: می‌تواند userId بدهد یا همه را ببیند
+    if (userId) {
+      if (!isAdmin) {
+        return res.status(403).json({ message: 'دسترسی فقط برای ادمین' });
+      }
+      const target = await User.findById(userId);
+      if (!target) return res.status(404).json({ message: 'کاربر یافت نشد' });
+      query.user = userId;
+    } else if (isAdmin && req.path.includes('/all')) {
+      // همه پرداخت‌ها
+      query = {};
+    } else {
+      // کاربر عادی: فقط خودش
+      query.user = requesterId;
+    }
+
+    const payments = await Payment.find(query)
+      .populate('courses.course', 'title coverImage price discount')
+      .populate('subscriptionPlan', 'duration price')
+      .populate('user', 'name family phone email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = payments.map(p => {
+      const courses = p.courses.map(c => {
+        const originalPrice = c.course.price || 0;
+        const discountAmount = c.course.discount ? (originalPrice * c.course.discount) / 100 : 0;
+        const finalPrice = originalPrice - discountAmount - (c.appliedDiscount || 0);
+
+        return {
+          courseId: c.course._id,
+          title: c.course.title,
+          coverImage: c.course.coverImage ? `${BASE_URL}/uploads/${c.course.coverImage}` : null,
+          originalPrice,
+          discountPercent: c.course.discount || 0,
+          discountAmount,
+          codeDiscountAmount: c.appliedDiscount || 0,
+          finalPrice: Math.max(0, finalPrice)
+        };
+      });
+
+      const subscription = p.subscriptionPlan ? {
+        planId: p.subscriptionPlan._id,
+        duration: p.subscriptionPlan.duration,
+        price: p.subscriptionPlan.price
+      } : null;
+
+      const base = {
+        paymentId: p._id,
+        amount: p.amount,
+        status: p.status,
+        refId: p.refId || null,
+        createdAt: p.createdAt,
+        courses,
+        subscription,
+        itemsCount: courses.length + (subscription ? 1 : 0)
+      };
+
+      // فقط ادمین اطلاعات کاربر را می‌بیند
+      if (isAdmin && p.user) {
+        return {
+          ...base,
+          user: {
+            id: p.user._id,
+            name: `${p.user.name} ${p.user.family}`,
+            phone: p.user.phone,
+            email: p.user.email
+          }
+        };
+      }
+
+      return base;
+    });
+
+    res.status(200).json({ payments: formatted });
+  } catch (err) {
+    console.error('Get payment history error:', err);
+    res.status(500).json({ message: 'خطای سرور در دریافت تاریخچه پرداخت' });
+  }
+};
+
+
+
 
 const createPayment = async (req, res) => {
   try {
@@ -300,4 +396,4 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-module.exports = { createPayment, verifyPayment };
+module.exports = { createPayment, verifyPayment , getPaymentHistory};

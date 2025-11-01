@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Course = require('../models/Course');
+const Notification = require('../models/Notification');
 
 const getAllStudents = async (req, res) => {
   try {
@@ -180,36 +181,138 @@ const updateTeacher = async (req, res) => {
 const getUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    // 1. اطلاعات کامل کاربر
     const user = await User.findById(userId)
-      .populate({
-        path: 'coursesEnrolled',
-        select: 'title coverImage category teacher status level duration type price',
-        populate: [
-          { path: 'category', select: 'name' },
-          { path: 'teacher', select: 'name family expertise' }
-        ]
-      })
-      .populate({
-        path: 'coursesTaught',
-        select: 'title coverImage category status level duration type price studentCount',
-        populate: { path: 'category', select: 'name' }
-      });
+      .select('name family phone email role status subscription subscriptionExpiresAt bio expertise profilePic isProfileComplete createdAt lastLogin')
+      .lean();
 
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: 'کاربر یافت نشد' });
     }
 
-    const dashboardData = {
-      role: user.role,
-      enrolledCourses: user.coursesEnrolled || [],
-      taughtCourses: user.role === 'teacher' ? (user.coursesTaught || []) : []
+    // 2. دوره‌های ثبت‌نام شده + اطلاعات کامل + مدرس
+    const enrolledCourses = await Course.find({ students: userId, status: 'active' })
+      .populate('teacher', 'name family expertise bio profilePic')
+      .populate('category', 'name')
+      .select('title description coverImage level duration type price discount discountEnd previewVideoUrl presentationMethod chapters students createdAt')
+      .lean();
+
+    const formattedEnrolledCourses = enrolledCourses.map(course => {
+      const teacher = course.teacher;
+      const finalPrice = course.type === 'paid' && course.discount > 0 && course.discountEnd && new Date() <= course.discountEnd
+        ? Math.round(course.price - (course.price * course.discount) / 100)
+        : course.price;
+
+      return {
+        course: {
+          id: course._id,
+          title: course.title,
+          description: course.description,
+          coverImage: course.coverImage,
+          level: course.level,
+          duration: course.duration,
+          type: course.type,
+          price: course.price || 0,
+          discount: course.discount || 0,
+          finalPrice,
+          isDiscountActive: course.discount > 0 && course.discountEnd && new Date() <= course.discountEnd,
+          previewVideoUrl: course.previewVideoUrl,
+          presentationMethod: course.presentationMethod,
+          chaptersCount: course.chapters?.length || 0,
+          studentCount: course.students?.length || 0,
+          createdAt: course.createdAt
+        },
+        teacher: {
+          id: teacher._id,
+          name: `${teacher.name} ${teacher.family}`,
+          expertise: teacher.expertise || '',
+          bio: teacher.bio || '',
+          profilePic: teacher.profilePic ? teacher.profilePic : null
+        }
+      };
+    });
+
+    // 3. کامنت‌های کاربر + دوره مربوطه
+    const coursesWithComments = await Course.find({ 'comments.user': userId })
+      .select('title comments')
+      .lean();
+
+    const userComments = [];
+    for (const course of coursesWithComments) {
+      const relevantComments = course.comments
+        .filter(c => c.user.toString() === userId.toString())
+        .map(c => ({
+          commentId: c._id,
+          text: c.text,
+          rating: c.rating || 0,
+          status: c.status,
+          createdAt: c.createdAt
+        }));
+
+      userComments.push({
+        courseId: course._id,
+        courseTitle: course.title,
+        comments: relevantComments
+      });
+    }
+
+    // 4. اعلانات کاربر
+    const notifications = await Notification.find({ user: userId })
+      .select('title message type relatedId isRead createdAt')
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+
+
+    // 5. تاریخچه پرداخت (آخرین 10)
+    const recentPayments = await Payment.find({ user: userId })
+      .populate('courses.course', 'title coverImage')
+      .populate('subscriptionPlan', 'duration')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    const paymentHistory = recentPayments.map(p => ({
+      paymentId: p._id,
+      amount: p.amount,
+      status: p.status,
+      refId: p.refId || null,
+      createdAt: p.createdAt,
+      items: [
+        ...p.courses.map(c => ({
+          type: 'course',
+          title: c.course.title,
+          coverImage: c.course.coverImage ? `${BASE_URL}/uploads/${c.course.coverImage}` : null,
+          id: c.course._id
+        })),
+        ...(p.subscriptionPlan ? [{
+          type: 'subscription',
+          title: `${p.subscriptionPlan.duration.replace('month', ' ماه')} VIP`,
+          id: p.subscriptionPlan._id
+        }] : [])
+      ]
+    }));
+      
+    // پاسخ نهایی
+    const dashboard = {
+      user: {
+        ...user,
+        profilePic: user.profilePic ? user.profilePic : null,
+        coursesEnrolledCount: formattedEnrolledCourses.length,
+        commentsCount: userComments.reduce((sum, c) => sum + c.comments.length, 0)
+      },
+      enrolledCourses: formattedEnrolledCourses,
+      comments: userComments,
+      notifications,
+      paymentHistory
     };
 
-    console.log(`Dashboard fetched for user ${userId}, role: ${user.role}`);
-    res.status(200).json(dashboardData);
+    console.log(`Dashboard loaded for user: ${userId}`);
+    res.status(200).json(dashboard);
   } catch (error) {
-    console.error(`Get dashboard error: ${error.message}`, { error });
-    res.status(500).json({ message: 'Server error while fetching dashboard' });
+    console.error('Get dashboard error:', error);
+    res.status(500).json({ message: 'خطای سرور در بارگذاری داشبورد' });
   }
 };
 

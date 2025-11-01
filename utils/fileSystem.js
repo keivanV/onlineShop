@@ -1,8 +1,9 @@
+// utils/fileSystem.js
 const fs = require('fs');
 const path = require('path');
 
 /* ------------------------------------------------------------------ */
-/* Ensure directory exists                                            */
+/* Ensure a directory exists (recursive)                              */
 /* ------------------------------------------------------------------ */
 const ensureDir = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
@@ -11,45 +12,25 @@ const ensureDir = (dirPath) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Generate unique course folder name                                 */
+/* Save an uploaded file and return relative path                     */
 /* ------------------------------------------------------------------ */
-const generateCourseFolder = (courseId) => {
-  return `course_${courseId}`;
+const saveFile = (file, destFolder) => {
+  if (!file) return null;
+  ensureDir(destFolder);
+  const fileName = `${Date.now()}_${file.originalname}`;
+  const filePath = path.join(destFolder, fileName);
+  fs.renameSync(file.path, filePath);
+  return path.relative(path.join(__dirname, '..', 'uploads'), filePath).replace(/\\/g, '/');
 };
 
 /* ------------------------------------------------------------------ */
-/* Get absolute path for course folder                                */
-/* ------------------------------------------------------------------ */
-const getCourseBasePath = (courseFolder) => {
-  return path.join(__dirname, '..', 'uploads', 'courses', courseFolder);
-};
-
-/* ------------------------------------------------------------------ */
-/* Delete folder recursively                                          */
-/* ------------------------------------------------------------------ */
-const deleteFolderRecursive = (dirPath) => {
-  if (fs.existsSync(dirPath)) {
-    fs.readdirSync(dirPath).forEach((file) => {
-      const curPath = path.join(dirPath, file);
-      if (fs.lstatSync(curPath).isDirectory()) {
-        deleteFolderRecursive(curPath);
-      } else {
-        fs.unlinkSync(curPath);
-      }
-    });
-    fs.rmdirSync(dirPath);
-  }
-};
-
-/* ------------------------------------------------------------------ */
-/* Clean up everything left in the temporary upload folder            */
+/* Clean temporary upload folder (old Multer files)                  */
 /* ------------------------------------------------------------------ */
 const cleanupTemp = () => {
   const tempDir = path.join(__dirname, '..', 'uploads', 'temp');
   if (!fs.existsSync(tempDir)) return;
 
   fs.readdirSync(tempDir).forEach((file) => {
-    // only delete files that look like Multer uploads (timestamp_...)
     if (/^\d+_/.test(file)) {
       const filePath = path.join(tempDir, file);
       try { fs.unlinkSync(filePath); } catch (_) {}
@@ -57,10 +38,4 @@ const cleanupTemp = () => {
   });
 };
 
-module.exports = {
-  ensureDir,
-  generateCourseFolder,
-  getCourseBasePath,
-  deleteFolderRecursive,
-  cleanupTemp
-};
+module.exports = { ensureDir, saveFile, cleanupTemp };
