@@ -1,10 +1,10 @@
 const User = require('../models/User');
 const Course = require('../models/Course');
 const Notification = require('../models/Notification');
-
+const Payment = require("../models/Payment");
 const getAllStudents = async (req, res) => {
   try {
-    const students = await User.find({ role: 'student' }).select('name family phone email createdAt status subscription coursesEnrolled lastLogin');
+    const students = await User.find({ role: 'student' }).select('name family phone email role status subscription subscriptionExpiresAt coursesEnrolled rating expertise bio isProfileComplete');
     const formattedStudents = students.map(student => ({
       ...student._doc,
       coursesCount: student.coursesEnrolled.length

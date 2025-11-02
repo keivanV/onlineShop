@@ -101,8 +101,10 @@ const createCourse = async (req, res) => {
     const coverFile = req.file;
 
     // ---- Validation -------------------------------------------------
-    if (!coverFile || !title || !category || !teacher || !status || !level ||
-        !duration || !presentationMethod || !type) {
+    if (!coverFile) {
+      return res.status(400).json({ message: 'تصویر کاور الزامی است' });
+    }
+    if (!title || !category || !teacher || !status || !level || !duration || !presentationMethod || !type) {
       return res.status(400).json({ message: 'همه فیلدهای الزامی باید پر شوند' });
     }
 
@@ -114,17 +116,47 @@ const createCourse = async (req, res) => {
       return res.status(400).json({ message: 'برای دوره‌های پولی، قیمت الزامی است' });
     }
 
-    // ---- اعتبارسنجی آرایه category ----------------------------------
-    const categories = Array.isArray(category) ? category : [category];
-    if (categories.length === 0) {
+    // ---- تبدیل و اعتبارسنجی category -------------------------------
+    let categoryIds = [];
+
+    if (typeof category === 'string') {
+      try {
+        // اگر JSON بود: ["id1","id2"]
+        if (category.trim().startsWith('[')) {
+          categoryIds = JSON.parse(category);
+        } 
+        // اگر کاما جدا شده بود: id1,id2
+        else {
+          categoryIds = category.split(',').map(id => id.trim()).filter(id => id);
+        }
+      } catch (e) {
+        return res.status(400).json({ message: 'فرمت دسته‌بندی نامعتبر است' });
+      }
+    } else if (Array.isArray(category)) {
+      categoryIds = category;
+    } else {
+      return res.status(400).json({ message: 'دسته‌بندی باید آرایه یا رشته باشد' });
+    }
+
+    if (categoryIds.length === 0) {
       return res.status(400).json({ message: 'حداقل یک دسته‌بندی الزامی است' });
     }
 
-    const validCategories = await Category.find({ _id: { $in: categories } });
-    if (validCategories.length !== categories.length) {
+    // تبدیل به ObjectId و اعتبارسنجی
+    const objectIds = categoryIds.map(id => {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: `شناسه دسته‌بندی نامعتبر: ${id}` });
+      }
+      return new mongoose.Types.ObjectId(id);
+    });
+
+    // بررسی وجود در دیتابیس
+    const validCategories = await Category.find({ _id: { $in: objectIds } });
+    if (validCategories.length !== objectIds.length) {
       return res.status(400).json({ message: 'یک یا چند دسته‌بندی نامعتبر است' });
     }
 
+    // ---- اعتبارسنجی مدرس -----------------------------------------
     const teacherDoc = await User.findById(teacher);
     if (!teacherDoc || teacherDoc.role !== 'teacher') {
       return res.status(400).json({ message: 'مدرس نامعتبر است' });
@@ -132,9 +164,9 @@ const createCourse = async (req, res) => {
 
     // ---- ایجاد دوره -------------------------------------------------
     const course = new Course({
-      title,
-      description: description?.trim(),
-      category: categories, // آرایه
+      title: title.trim(),
+      description: description?.trim() || '',
+      category: objectIds, // آرایه از ObjectId
       teacher,
       status,
       level,
@@ -146,17 +178,25 @@ const createCourse = async (req, res) => {
       previewVideoUrl: previewVideoUrl || null
     });
 
-    // تخفیف
+    // ---- مدیریت تخفیف ---------------------------------------------
     if (type === 'paid' && course.discount > 0) {
-      const end = calculateDiscountEnd(discountHours, discountMinutes, discountSeconds);
-      if (!end) return res.status(400).json({ message: 'مدت زمان تخفیف باید بیشتر از صفر باشد' });
+      const end = calculateDiscountEnd(
+        parseInt(discountHours) || 0,
+        parseInt(discountMinutes) || 0,
+        parseInt(discountSeconds) || 0
+      );
+      if (!end) {
+        return res.status(400).json({ message: 'مدت زمان تخفیف باید بیشتر از صفر باشد' });
+      }
       course.discountEnd = end;
     }
 
+    // ذخیره اولیه (برای داشتن _id)
     await course.save({ validateBeforeSave: false });
 
-    // ذخیره کاور
+    // ---- ذخیره کاور -------------------------------------------------
     const basePath = path.join(__dirname, '..', 'uploads', 'courses', `course_${course._id}`);
+    ensureDir(basePath);
     course.coverImage = saveFile(coverFile, basePath);
 
     // ---- فصل‌ها و ویدیوها -----------------------------------------
@@ -177,7 +217,9 @@ const createCourse = async (req, res) => {
       const videos = [];
       for (const vIdx of videoIndices) {
         const videoUrl = req.body[`chapters[${chIdx}].videos[${vIdx}].videoUrl`];
-        if (!videoUrl) return res.status(400).json({ message: `آدرس ویدیو ${vIdx + 1} الزامی است` });
+        if (!videoUrl) {
+          return res.status(400).json({ message: `آدرس ویدیو ${vIdx + 1} در فصل ${chIdx + 1} الزامی است` });
+        }
 
         videos.push({
           title: req.body[`chapters[${chIdx}].videos[${vIdx}].title`] || `ویدیو ${vIdx + 1}`,
@@ -210,13 +252,20 @@ const createCourse = async (req, res) => {
     }));
     if (notifs.length) await Notification.insertMany(notifs);
 
-    res.status(201).json(course);
+    // ---- پاسخ نهایی -------------------------------------------------
+    const populatedCourse = await Course.findById(course._id)
+      .populate('category', 'name')
+      .populate('teacher', 'name family expertise');
+
+    res.status(201).json(populatedCourse);
+
   } catch (err) {
     console.error('Create course error:', err.message);
     cleanupTemp();
     res.status(500).json({ message: 'خطای سرور', error: err.message });
   }
 };
+
 
 /* ------------------------------------------------------------------ */
 /* PUT /api/courses/:id – admin edits a course                        */
