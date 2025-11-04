@@ -23,12 +23,11 @@ const searchCourses = async (req, res) => {
       $or: [
         { title: searchRegex },
         { 'teacher.name': searchRegex },
-        { 'teacher.family': searchRegex },
         { 'category.name': searchRegex }
       ]
     })
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise')
+      .populate('teacher', 'name expertise')
       .lean()
       .limit(5);
 
@@ -37,7 +36,7 @@ const searchCourses = async (req, res) => {
       title: c.title,
       coverImage: url(c.coverImage),
       previewVideo: url(c.previewVideo),
-      teacherName: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'Unknown',
+      teacherName: c.teacher ? `${c.teacher.name}` : 'Unknown',
       category: c.category?.name || '',
       level: c.level,
       duration: c.duration,

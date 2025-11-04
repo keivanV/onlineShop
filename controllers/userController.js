@@ -10,7 +10,7 @@ const url = (p) => (p ? `${BASE_URL}/uploads/${p}` : null);
 const getAllStudents = async (req, res) => {
   try {
     const students = await User.find({ role: 'student' })
-      .select('name family phone email role status subscription subscriptionExpiresAt coursesEnrolled profilePic createdAt')
+      .select('name  phone email role status subscription subscriptionExpiresAt coursesEnrolled profilePic createdAt')
       .populate('coursesEnrolled', 'title coverImage courseRating courseRatingCount type price discount discountEnd')
       .lean();
 
@@ -37,8 +37,7 @@ const getAllStudents = async (req, res) => {
       return {
         id: student._id,
         name: student.name,
-        family: student.family,
-        fullName: `${student.name} ${student.family}`,
+        fullName: `${student.name}`,
         phone: student.phone,
         email: student.email,
         status: student.status,
@@ -62,7 +61,7 @@ const getAllStudents = async (req, res) => {
 const updateStudent = async (req, res) => {
   try {
     const { phone: paramPhone } = req.params;
-    const { name, family, email, phone, birthdate, city, address, profilePic, status, subscription } = req.body;
+    const { name, email, phone, birthdate, city, address, profilePic, status, subscription } = req.body;
 
     const user = await User.findOne({ phone: paramPhone, role: 'student' });
     if (!user) return res.status(404).json({ message: 'Student not found' });
@@ -78,7 +77,6 @@ const updateStudent = async (req, res) => {
     }
 
     user.name = name || user.name;
-    user.family = family || user.family;
     user.email = email || user.email;
     user.birthdate = birthdate || user.birthdate;
     user.city = city || user.city;
@@ -101,14 +99,13 @@ const updateStudent = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { name, family, email, birthdate, city, address, profilePic } = req.body;
+    const { name,  email, birthdate, city, address, profilePic } = req.body;
     const userId = req.user.id;
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     user.name = name || user.name;
-    user.family = family || user.family;
     user.email = email || user.email;
     user.birthdate = birthdate || user.birthdate;
     user.city = city || user.city;
@@ -128,7 +125,7 @@ const updateProfile = async (req, res) => {
 const getAllTeachers = async (req, res) => {
   try {
     const teachers = await User.find({ role: 'teacher' })
-      .select('name family phone email expertise bio rating coursesTaught profilePic createdAt')
+      .select('name  phone email expertise bio rating coursesTaught profilePic createdAt')
       .populate({
         path: 'coursesTaught',
         select: 'title coverImage status type students courseRating courseRatingCount',
@@ -152,8 +149,7 @@ const getAllTeachers = async (req, res) => {
         id: teacher._id,
         phone: teacher.phone,
         name: teacher.name,
-        family: teacher.family,
-        fullName: `${teacher.name} ${teacher.family}`,
+        fullName: `${teacher.name}`,
         email: teacher.email,
         expertise: teacher.expertise || '',
         bio: teacher.bio || '',
@@ -195,7 +191,7 @@ const addTeacher = async (req, res) => {
 const updateTeacher = async (req, res) => {
   try {
     const { phone: paramPhone } = req.params;
-    const { name, family, email, expertise, phone, nationalId, address, bio, status, profilePic } = req.body;
+    const { name,  email, expertise, phone, nationalId, address, bio, status, profilePic } = req.body;
 
     const user = await User.findOne({ phone: paramPhone, role: 'teacher' });
     if (!user) return res.status(404).json({ message: 'Teacher not found' });
@@ -211,7 +207,6 @@ const updateTeacher = async (req, res) => {
     }
 
     user.name = name || user.name;
-    user.family = family || user.family;
     user.email = email || user.email;
     user.expertise = expertise || user.expertise;
     user.nationalId = nationalId || user.nationalId;
@@ -238,14 +233,14 @@ const getUserDashboard = async (req, res) => {
 
     // 1. اطلاعات کاربر
     const user = await User.findById(userId)
-      .select('name family phone email role status subscription subscriptionExpiresAt bio expertise profilePic isProfileComplete createdAt lastLogin')
+      .select('name  phone email role status subscription subscriptionExpiresAt bio expertise profilePic isProfileComplete createdAt lastLogin')
       .lean();
 
     if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
     // 2. دوره‌های ثبت‌نام شده
     const enrolledCourses = await Course.find({ students: userId, status: 'active' })
-      .populate('teacher', 'name family rating expertise bio profilePic')
+      .populate('teacher', 'name  rating expertise bio profilePic')
       .populate('category', 'name')
       .select('title description coverImage level duration type price discount discountEnd previewVideoUrl presentationMethod chapters students createdAt courseRating courseRatingCount')
       .lean();
@@ -279,7 +274,7 @@ const getUserDashboard = async (req, res) => {
         },
         teacher: {
           id: teacher._id,
-          name: `${teacher.name} ${teacher.family}`,
+          name: `${teacher.name} ${teacher}`,
           expertise: teacher.expertise || '',
           bio: teacher.bio || '',
           profilePic: teacher.profilePic ? url(teacher.profilePic) : null,

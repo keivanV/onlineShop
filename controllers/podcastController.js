@@ -93,7 +93,7 @@ const createPodcast = async (req, res) => {
 const getPodcasts = async (req, res) => {
   try {
     const podcasts = await Podcast.find({ status: 'published' })
-      .populate('author', 'name family')
+      .populate('author', 'name')
       .sort({ episode: -1 })
       .lean();
 
@@ -107,7 +107,7 @@ const getPodcasts = async (req, res) => {
       audioUrl: p.audioUrl,
       coverImage: `${BASE_URL}${p.coverImage}`,
       author: p.author
-        ? { _id: p.author._id, name: p.author.name, family: p.author.family }
+        ? { _id: p.author._id, name: p.author.name}
         : null,
       status: p.status,
       createdAt: p.createdAt,

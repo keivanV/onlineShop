@@ -9,7 +9,6 @@ mongoose.connect(process.env.MONGO_URI)
       { phone: '09120000000' },
       {
         name: 'Admin',
-        family: 'Manager',
         email: 'admin@platform.com',
         phone: '09120000000',
         role: 'admin',

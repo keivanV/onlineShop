@@ -95,7 +95,7 @@ const deleteArticle = async (req, res) => {
 const getArticles = async (req, res) => {
   try {
     const articles = await Article.find()
-      .populate('author', 'name family phone')
+      .populate('author', 'name  phone')
       .populate('category', 'name')
       .sort({ createdAt: -1 });
 
@@ -112,7 +112,7 @@ const getArticleById = async (req, res) => {
     const { id } = req.params;
 
     const article = await Article.findById(id)
-      .populate('author', 'name family phone')
+      .populate('author', 'name  phone')
       .populate('category', 'name');
 
     if (!article) {

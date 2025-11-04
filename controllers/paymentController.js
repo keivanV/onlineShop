@@ -47,7 +47,7 @@ const getPaymentHistory = async (req, res) => {
     const payments = await Payment.find(query)
       .populate('courses.course', 'title coverImage price discount')
       .populate('subscriptionPlan', 'duration price')
-      .populate('user', 'name family phone email')
+      .populate('user', 'name phone email')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -92,7 +92,7 @@ const getPaymentHistory = async (req, res) => {
           ...base,
           user: {
             id: p.user._id,
-            name: `${p.user.name} ${p.user.family}`,
+            name: `${p.user.name}`,
             phone: p.user.phone,
             email: p.user.email
           }
@@ -215,7 +215,7 @@ const createPayment = async (req, res) => {
       description: `Payment for course: ${course.title}`,
       returnUrl: `${process.env.FRONTEND_URL}/payment/callback?paymentId=${payment._id}`,
       clientRefId: payment._id.toString(),
-      payerName: `${user.name} ${user.family}`,
+      payerName: `${user.name}`,
       payerIdentity: user.phone
     };
 

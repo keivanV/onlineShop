@@ -26,7 +26,7 @@ router.get('/', authOptional, async (req, res) => {
 
     // 1. Courses (همیشه در دسترس)
     const basePopulate = [
-      { path: 'teacher', select: 'name family expertise' },
+      { path: 'teacher', select: 'name  expertise' },
       { path: 'category', select: 'name' }
     ];
     const baseSelect = 'title coverImage status level duration type price discount createdAt students rating chapters previewVideoUrl presentationMethod prerequisites';
@@ -86,7 +86,7 @@ router.get('/', authOptional, async (req, res) => {
       id: c._id,
       title: c.title,
       coverImage: url(c.coverImage),
-      teacher: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'نامشخص',
+      teacher: c.teacher ? `${c.teacher.name}` : 'نامشخص',
       expertise: c.teacher?.expertise || '',
       category: c.category?.name || '',
       price: c.price || 0,
@@ -140,13 +140,13 @@ router.get('/', authOptional, async (req, res) => {
 
       // پروفایل کاربر
       userProfile = await User.findById(userId)
-        .select('name family phone email role status subscription subscriptionExpiresAt coursesEnrolled rating expertise bio isProfileComplete')
+        .select('name  phone email role status subscription subscriptionExpiresAt coursesEnrolled rating expertise bio isProfileComplete')
         .lean();
     }
 
     // 3. پادکست‌ها
     const podcasts = await Podcast.find({ status: 'published' })
-      .populate('author', 'name family')
+      .populate('author', 'name')
       .select('title description duration episode tags audioUrl coverImage author createdAt')
       .lean();
 
@@ -168,7 +168,7 @@ router.get('/', authOptional, async (req, res) => {
       userProfile,
       podcasts: podcasts.map(p => ({
         ...p,
-        author: p.author ? `${p.author.name} ${p.author.family}` : 'نامشخص',
+        author: p.author ? `${p.author.name}` : 'نامشخص',
         audioUrl: url(p.audioUrl),
         coverImage: url(p.coverImage)
       })),
@@ -227,12 +227,11 @@ router.get('/search', authOptional, async (req, res) => {
       $or: [
         { title: { $regex: searchQuery, $options: 'i' } },
         { 'teacher.name': { $regex: searchQuery, $options: 'i' } },
-        { 'teacher.family': { $regex: searchQuery, $options: 'i' } },
         { 'category.name': { $regex: searchQuery, $options: 'i' } }
       ]
     })
       .populate([
-        { path: 'teacher', select: 'name family expertise' },
+        { path: 'teacher', select: 'name  expertise' },
         { path: 'category', select: 'name' }
       ])
       .select('title coverImage previewVideoUrl status level duration type price discount students rating chapters presentationMethod createdAt')
@@ -244,7 +243,7 @@ router.get('/search', authOptional, async (req, res) => {
       title: course.title,
       coverImage: url(course.coverImage),
       previewVideoUrl: course.previewVideoUrl,
-      teacher: course.teacher ? `${course.teacher.name} ${course.teacher.family}` : 'نامشخص',
+      teacher: course.teacher ? `${course.teacher.name}` : 'نامشخص',
       expertise: course.teacher?.expertise || '',
       category: course.category?.name || '',
       status: course.status,

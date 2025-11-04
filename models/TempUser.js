@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const tempUserSchema = new mongoose.Schema({
   name: { type: String },
-  family: { type: String },
+  // family: { type: String },
   phone: { type: String, required: true, unique: true },
   email: { type: String },
   otp: { type: String, required: true },

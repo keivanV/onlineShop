@@ -40,7 +40,6 @@ const seedData = async () => {
       { phone: '09120000000' },
       {
         name: 'Admin',
-        family: 'Manager',
         email: 'admin@platform.com',
         phone: '09120000000',
         role: 'admin',
@@ -70,23 +69,23 @@ const seedData = async () => {
 
     // 4. Teachers
     const teachers = await User.insertMany([
-      { name: 'Mohammad', family: 'Ahmadi', phone: '09123456789', email: 'mohammad@lms.com', role: 'teacher', expertise: 'React, Node.js', bio: 'Senior Frontend Developer', isProfileComplete: true },
-      { name: 'Zahra', family: 'Rezaei', phone: '09129876543', email: 'zahra@lms.com', role: 'teacher', expertise: 'Python, ML', bio: 'AI Researcher', isProfileComplete: true },
-      { name: 'Ali', family: 'Mohammadi', phone: '09134567890', email: 'ali@lms.com', role: 'teacher', expertise: 'Figma, UX', bio: 'Lead Designer', isProfileComplete: true },
-      { name: 'Nima', family: 'Sadeghi', phone: '09145678901', email: 'nima@lms.com', role: 'teacher', expertise: 'Blockchain, Web3', bio: 'Web3 Pioneer', isProfileComplete: true },
+      { name: 'Mohammad Ahmadi', phone: '09123456789', email: 'mohammad@lms.com', role: 'teacher', expertise: 'React, Node.js', bio: 'Senior Frontend Developer', isProfileComplete: true },
+      { name: 'Zahra Rezaei', phone: '09129876543', email: 'zahra@lms.com', role: 'teacher', expertise: 'Python, ML', bio: 'AI Researcher', isProfileComplete: true },
+      { name: 'Ali Mohammadi', phone: '09134567890', email: 'ali@lms.com', role: 'teacher', expertise: 'Figma, UX', bio: 'Lead Designer', isProfileComplete: true },
+      { name: 'Nima Sadeghi', phone: '09145678901', email: 'nima@lms.com', role: 'teacher', expertise: 'Blockchain, Web3', bio: 'Web3 Pioneer', isProfileComplete: true },
     ]);
     console.log('Teachers created (4 teachers)');
 
     // 5. Students
     const students = await User.insertMany([
-      { name: 'Reza', family: 'Kazemi', phone: '09911223344', email: 'reza@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Fatemeh', family: 'Hosseini', phone: '09944556677', email: 'fatemeh@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Sara', family: 'Nouri', phone: '09922334455', email: 'sara@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Hossein', family: 'Akbari', phone: '09933445566', email: 'hossein@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Amir', family: 'Rahimi', phone: '09955667788', email: 'amir@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Mina', family: 'Jafari', phone: '09966778899', email: 'mina@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Kaveh', family: 'Moradi', phone: '09977889900', email: 'kaveh@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
-      { name: 'Parisa', family: 'Ebrahimi', phone: '09988990011', email: 'parisa@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Reza Kazemi', phone: '09911223344', email: 'reza@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Fatemeh Hosseini', phone: '09944556677', email: 'fatemeh@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Sara Nouri', phone: '09922334455', email: 'sara@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Hossein Akbari', phone: '09933445566', email: 'hossein@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Amir Rahimi', phone: '09955667788', email: 'amir@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Mina Jafari', phone: '09966778899', email: 'mina@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Kaveh Moradi', phone: '09977889900', email: 'kaveh@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
+      { name: 'Parisa Ebrahimi', phone: '09988990011', email: 'parisa@lms.com', role: 'student', subscription: 'regular', isProfileComplete: true },
     ]);
     console.log('Students created (8 total, 3 will become VIP)');
 

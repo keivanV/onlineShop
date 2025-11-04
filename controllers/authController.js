@@ -84,7 +84,6 @@ const verifyOTP = async (req, res) => {
         message: 'Login successful',
         phone: user.phone, 
         name: user.name, 
-        family: user.family,
         email: user.email,
         accessToken,
         refreshToken,
@@ -116,9 +115,9 @@ const verifyOTP = async (req, res) => {
 // --- completeRegistration ---
 const completeRegistration = async (req, res) => {
   try {
-    const { tempUserId, name, family, email, role = 'student' } = req.body;
+    const { tempUserId, name,  email, role = 'student' } = req.body;
 
-    if (!tempUserId || !name || !family || !email) {
+    if (!tempUserId || !name || !email) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -137,7 +136,7 @@ const completeRegistration = async (req, res) => {
     }
 
     const user = new User({
-      name, family, email, phone: tempUser.phone,
+      name,  email, phone: tempUser.phone,
       role,
       isProfileComplete: true
     });
@@ -151,6 +150,8 @@ const completeRegistration = async (req, res) => {
 
     res.status(201).json({
       message: 'Registration completed',
+      name:user.name,
+      email:user.email,
       accessToken,
       refreshToken
     });

@@ -334,7 +334,7 @@ const checkoutBasket = async (req, res) => {
       description: `Payment for ${basket.courses.length} course(s) and ${basket.subscriptionPlan ? 'VIP subscription' : 'no subscription'}`,
       returnUrl: `${process.env.FRONTEND_URL}/payment/callback?paymentId=${payment._id}`,
       clientRefId: payment._id.toString(),
-      payerName: `${user.name} ${user.family}`,
+      payerName: `${user.name} `,
       payerIdentity: user.phone
     };
 

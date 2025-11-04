@@ -107,7 +107,7 @@ const editDiscountCode = async (req, res) => {
 
 const getDiscountCodes = async (req, res) => {
   try {
-    const discountCodes = await DiscountCode.find().populate('usedBy.user', 'name family');
+    const discountCodes = await DiscountCode.find().populate('usedBy.user', 'name');
     console.log(`Fetched ${discountCodes.length} discount codes`);
     res.status(200).json(discountCodes);
   } catch (error) {

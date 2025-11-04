@@ -34,8 +34,8 @@ const getCourseDetail = async (req, res) => {
 
     const course = await Course.findById(courseId)
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise bio rating')
-      .populate('comments.user', 'name family')
+      .populate('teacher', 'name expertise bio rating')
+      .populate('comments.user', 'name')
       .lean();
 
     if (!course) return res.status(404).json({ message: 'Course not found' });
@@ -87,7 +87,7 @@ const getCourseDetail = async (req, res) => {
       previewVideoUrl: course.previewVideoUrl,
       finalPrice: course.finalPrice,
       isDiscountActive: course.isDiscountActive,
-      teacherName: course.teacher ? `${course.teacher.name} ${course.teacher.family}` : 'Unknown',
+      teacherName: course.teacher ? `${course.teacher.name}` : 'Unknown',
       isEnrolled,
       canAccess,
       chapters,
@@ -96,7 +96,7 @@ const getCourseDetail = async (req, res) => {
 
     const teacher = course.teacher ? {
       _id: course.teacher._id,
-      fullName: `${course.teacher.name} ${course.teacher.family}`,
+      fullName: `${course.teacher.name}`,
       expertise: course.teacher.expertise || '',
       bio: course.teacher.bio || '',
       rating: course.teacher.rating || 0

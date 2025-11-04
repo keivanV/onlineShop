@@ -57,13 +57,13 @@ const getCourses = async (req, res) => {
 
     const courses = await Course.find(query)
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise rating')
+      .populate('teacher', 'name expertise rating')
       .lean();
 
     // تابع تبدیل دوره
     const formatCourse = (c) => ({
       ...c,
-      teacherName: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'نامشخص',
+      teacherName: c.teacher ? `${c.teacher.name} ` : 'نامشخص',
       teacherRating: c.teacher?.rating || 0,
       studentCount: c.students.length,
       expertise: c.teacher?.expertise || '',
@@ -278,7 +278,7 @@ const createCourse = async (req, res) => {
     const notifs = students.map(s => ({
       user: s._id,
       title: 'دوره جدید!',
-      message: `دوره "${title}" توسط ${teacherDoc.name} ${teacherDoc.family} منتشر شد.`,
+      message: `دوره "${title}" توسط ${teacherDoc.name} منتشر شد.`,
       type: 'course',
       relatedId: course._id
     }));
@@ -287,7 +287,7 @@ const createCourse = async (req, res) => {
     // ---- پاسخ نهایی -------------------------------------------------
     const populatedCourse = await Course.findById(course._id)
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise');
+      .populate('teacher', 'name  expertise');
 
     res.status(201).json(populatedCourse);
 
@@ -582,7 +582,7 @@ const getComments = async (req, res) => {
   try {
     const { courseId } = req.params;
     const course = await Course.findById(courseId)
-      .populate('comments.user', 'name family profilePic')
+      .populate('comments.user', 'name  profilePic')
       .select('comments courseRating courseRatingCount');
 
     if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
@@ -594,7 +594,7 @@ const getComments = async (req, res) => {
         text: c.text,
         rating: c.rating,
         user: {
-          name: `${c.user.name} ${c.user.family}`,
+          name: `${c.user.name} `,
           profilePic: c.user.profilePic ? url(c.user.profilePic) : null
         },
         createdAt: c.createdAt
@@ -656,7 +656,7 @@ const getPendingComments = async (req, res) => {
   try {
     const { courseId } = req.params;
     const course = await Course.findById(courseId)
-      .populate('comments.user', 'name family')
+      .populate('comments.user', 'name')
       .select('comments');
 
     if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
@@ -726,12 +726,12 @@ const searchCourses = async (req, res) => {
       $or: [
         { title: searchRegex },
         { 'teacher.name': searchRegex },
-        { 'teacher.family': searchRegex },
+
         { 'category.name': searchRegex }
       ]
     })
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise')
+      .populate('teacher', 'name  expertise')
       .lean()
       .limit(5);
 
@@ -740,7 +740,7 @@ const searchCourses = async (req, res) => {
       title: c.title,
       coverImage: url(c.coverImage),
       previewVideo: url(c.previewVideo),
-      teacherName: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'Unknown',
+      teacherName: c.teacher ? `${c.teacher.name}` : 'Unknown',
       category: c.category?.name || '',
       level: c.level,
       duration: c.duration,
