@@ -43,7 +43,7 @@ const seedData = async () => {
         email: 'admin@platform.com',
         phone: '09120000000',
         role: 'admin',
-        isProfileComplete: true,
+        isProfileComplete: true
       },
       { upsert: true, new: true }
     );

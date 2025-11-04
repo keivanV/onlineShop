@@ -36,7 +36,7 @@ const getAllStudents = async (req, res) => {
 
       return {
         id: student._id,
-        name: student.name,
+        
         fullName: `${student.name}`,
         phone: student.phone,
         email: student.email,
@@ -148,7 +148,7 @@ const getAllTeachers = async (req, res) => {
       return {
         id: teacher._id,
         phone: teacher.phone,
-        name: teacher.name,
+        
         fullName: `${teacher.name}`,
         email: teacher.email,
         expertise: teacher.expertise || '',
