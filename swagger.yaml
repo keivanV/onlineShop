@@ -180,6 +180,12 @@ components:
     Course:
       type: object
       properties:
+        courseRating:
+          type: number
+          example: 4.5
+        courseRatingCount:
+          type: integer
+          example: 24
         _id: { type: string }
         coverImage: { type: string }
         description: 
@@ -551,6 +557,52 @@ components:
           type: array
           items: { $ref: '#/components/schemas/PaymentHistoryItem' }
       required: [user, enrolledCourses, comments, notifications, paymentHistory]
+
+
+    #-------------
+    SearchSuggestion:
+          allOf:
+            - $ref: '#/components/schemas/Course'
+            - type: object
+              properties:
+                teacherName:
+                  type: string
+                teacherRating:
+                  type: number
+                studentCount:
+                  type: integer
+                expertise:
+                  type: string
+                isDiscountActive:
+                  type: boolean
+                finalPrice:
+                  type: number
+                coverImage:
+                  type: string
+                  format: uri
+                previewVideoUrl:
+                  type: string
+                  format: uri
+                  nullable: true
+                firstVideo:
+                  type: object
+                  nullable: true
+                  properties:
+                    _id:
+                      type: string
+                    title:
+                      type: string
+                    fileUrl:
+                      type: string
+                      format: uri
+                    accessible:
+                      type: boolean
+              required:
+                - _id
+                - title
+                - teacherName
+                - coverImage
+
 
 
     #-------------------------
@@ -998,6 +1050,7 @@ paths:
   /users/profile:
     put:
       summary: Edit own profile (requires completed profile)
+      deprecated: true
       tags: [Users]
       security:
         - BearerAuth: []
@@ -1689,7 +1742,7 @@ paths:
         '500': { $ref: '#/components/responses/ServerError' }
 
   # ------------------- COURSE SEARCH (AUTOCOMPLETE) -------------------
-  /course/search:
+  /courses/search:
     get:
       summary: Course search & autocomplete
       description: |
@@ -1709,7 +1762,6 @@ paths:
           example: react
       responses:
         '200':
-          description: List of matching courses (full detail)
           content:
             application/json:
               schema:
@@ -1719,43 +1771,7 @@ paths:
                     type: array
                     maxItems: 5
                     items:
-                      allOf:
-                        - $ref: '#/components/schemas/CourseDetailResponse/properties/course'
-                        - type: object
-                          properties:
-                            teacher:
-                              type: string
-                              example: rismanTab
-                            category:
-                              type: string
-                              example: FrontEnd
-                            finalPrice:
-                              type: number
-                            coverImage:
-                              type: string
-                              format: uri
-                            previewVideo:
-                              type: string
-                              format: uri
-                              nullable: true
-                            chapters:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  title: { type: string }
-                                  duration: { type: number }
-                                  videos:
-                                    type: array
-                                    items:
-                                      type: object
-                                      properties:
-                                        title: { type: string }
-                                        duration: { type: number }
-                                        fileUrl:
-                                          type: string
-                                          format: uri
-                                          nullable: true
+                      $ref: '#/components/schemas/SearchSuggestion'
                 required: [suggestions]
         '400':
           description: Query too short
@@ -1766,7 +1782,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/ServerError'
-
 
   #----
 

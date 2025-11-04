@@ -19,11 +19,36 @@ const calculateDiscountEnd = (hours = 0, minutes = 0, seconds = 0) => {
   return ms > 0 ? new Date(Date.now() + ms) : null;
 };
 
+
+/* ------------------------------------------------------------------ */
+/* Helper: Update Teacher Rating                                      */
+/* ------------------------------------------------------------------ */
+const updateTeacherRating = async (teacherId) => {
+  try {
+    const taughtCourses = await Course.find({ teacher: teacherId, status: 'active' })
+      .select('courseRating courseRatingCount');
+
+    let totalRating = 0;
+    let totalCount = 0;
+
+    taughtCourses.forEach(c => {
+      if (c.courseRatingCount > 0) {
+        totalRating += c.courseRating * c.courseRatingCount;
+        totalCount += c.courseRatingCount;
+      }
+    });
+
+    const teacherRating = totalCount > 0 ? Number((totalRating / totalCount).toFixed(2)) : 0;
+
+    await User.findByIdAndUpdate(teacherId, { rating: teacherRating });
+  } catch (err) {
+    console.error('Error updating teacher rating:', err);
+  }
+};
+
+
 /* ------------------------------------------------------------------ */
 /* GET /api/courses – list all courses (public)                       */
-/* ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ */
-/* GET /api/courses – برگرداندن همه بخش‌های گروه‌بندی شده در یک JSON */
 /* ------------------------------------------------------------------ */
 const getCourses = async (req, res) => {
   try {
@@ -32,13 +57,14 @@ const getCourses = async (req, res) => {
 
     const courses = await Course.find(query)
       .populate('category', 'name')
-      .populate('teacher', 'name family expertise')
+      .populate('teacher', 'name family expertise rating')
       .lean();
 
     // تابع تبدیل دوره
     const formatCourse = (c) => ({
       ...c,
       teacherName: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'نامشخص',
+      teacherRating: c.teacher?.rating || 0,
       studentCount: c.students.length,
       expertise: c.teacher?.expertise || '',
       isDiscountActive: c.isDiscountActive,
@@ -239,6 +265,12 @@ const createCourse = async (req, res) => {
 
     course.chapters = chapters;
     await course.save();
+
+    await User.findByIdAndUpdate(teacher, {
+      $addToSet: { coursesTaught: course._id }
+    });
+
+
     cleanupTemp();
 
     // ---- اطلاع‌رسانی به دانشجویان -----------------------------------
@@ -347,9 +379,26 @@ const editCourse = async (req, res) => {
     }
 
     if (req.body.teacher) {
-      const t = await User.findById(req.body.teacher);
-      if (!t || t.role !== 'teacher') return res.status(400).json({ message: 'مدرس نامعتبر است' });
-      course.teacher = req.body.teacher;
+      const newTeacherId = req.body.teacher;
+
+      if (newTeacherId !== course.teacher.toString()) {
+        const t = await User.findById(newTeacherId);
+        if (!t || t.role !== 'teacher') {
+          return res.status(400).json({ message: 'مدرس نامعتبر است' });
+        }
+
+        // حذف از مدرس قبلی
+        await User.findByIdAndUpdate(course.teacher, {
+          $pull: { coursesTaught: course._id }
+        });
+
+        // اضافه به مدرس جدید
+        await User.findByIdAndUpdate(newTeacherId, {
+          $addToSet: { coursesTaught: course._id }
+        });
+
+        course.teacher = newTeacherId;
+      }
     }
 
     // ---- فصل‌ها و ویدیوها -----------------------------------------
@@ -492,6 +541,10 @@ const addComment = async (req, res) => {
     const { text, rating } = req.body;
     const userId = req.user.id;
 
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'امتیاز باید بین ۱ تا ۵ باشد' });
+    }
+
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
 
@@ -499,9 +552,22 @@ const addComment = async (req, res) => {
       return res.status(403).json({ message: 'برای نظر دادن باید در دوره ثبت‌نام کنید' });
     }
 
-    course.comments.push({ user: userId, text, rating, status: 'pending' });
-    await course.save();
+    // جلوگیری از نظر دادن دوباره
+    const existingComment = course.comments.find(c =>
+      c.user.toString() === userId && c.status !== 'rejected'
+    );
+    if (existingComment) {
+      return res.status(400).json({ message: 'شما قبلاً نظر داده‌اید' });
+    }
 
+    course.comments.push({
+      user: userId,
+      text: text.trim(),
+      rating: parseInt(rating),
+      status: 'pending'
+    });
+
+    await course.save();
     res.status(201).json({ message: 'نظر شما برای تأیید ارسال شد' });
   } catch (err) {
     console.error(err);
@@ -509,23 +575,44 @@ const addComment = async (req, res) => {
   }
 };
 
+/* ------------------------------------------------------------------ */
+/* Get Comments                                                       */
+/* ------------------------------------------------------------------ */
 const getComments = async (req, res) => {
   try {
     const { courseId } = req.params;
     const course = await Course.findById(courseId)
-      .populate('comments.user', 'name family')
-      .select('comments');
+      .populate('comments.user', 'name family profilePic')
+      .select('comments courseRating courseRatingCount');
 
     if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
 
-    const approved = course.comments.filter(c => c.status === 'approved');
-    res.json(approved);
+    const approved = course.comments
+      .filter(c => c.status === 'approved')
+      .map(c => ({
+        commentId: c._id,
+        text: c.text,
+        rating: c.rating,
+        user: {
+          name: `${c.user.name} ${c.user.family}`,
+          profilePic: c.user.profilePic ? url(c.user.profilePic) : null
+        },
+        createdAt: c.createdAt
+      }));
+
+    res.json({
+      comments: approved,
+      courseRating: course.courseRating || 0,
+      courseRatingCount: course.courseRatingCount || 0
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'خطای سرور' });
   }
 };
-
+/* ------------------------------------------------------------------ */
+/* Approve Comment + Update Ratings                                   */
+/* ------------------------------------------------------------------ */
 const approveComment = async (req, res) => {
   try {
     const { courseId, commentId } = req.params;
@@ -536,12 +623,29 @@ const approveComment = async (req, res) => {
     if (!comment) return res.status(404).json({ message: 'نظر یافت نشد' });
 
     if (comment.status !== 'pending') {
-      return res.status(400).json({ message: 'نظر در حالت تأیید نیست' });
+      return res.status(400).json({ message: 'نظر قبلاً بررسی شده' });
     }
 
     comment.status = 'approved';
+
+    // محاسبه rating دوره
+    const approvedComments = course.comments.filter(c => c.status === 'approved');
+    const totalRating = approvedComments.reduce((sum, c) => sum + c.rating, 0);
+    const ratingCount = approvedComments.length;
+
+    course.courseRating = ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(2)) : 0;
+    course.courseRatingCount = ratingCount;
+
     await course.save();
-    res.json({ message: 'نظر تأیید شد' });
+
+    // بروزرسانی rating مدرس
+    await updateTeacherRating(course.teacher);
+
+    res.json({
+      message: 'نظر تأیید شد',
+      courseRating: course.courseRating,
+      courseRatingCount: course.courseRatingCount
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'خطای سرور' });
@@ -607,6 +711,63 @@ const accessCourseVideo = async (req, res) => {
   }
 };
 
+
+const searchCourses = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) {
+      return res.status(400).json({ message: 'Query must be at least 2 characters' });
+    }
+
+    const searchRegex = new RegExp(q.trim(), 'i');
+
+    const courses = await Course.find({
+      status: 'active',
+      $or: [
+        { title: searchRegex },
+        { 'teacher.name': searchRegex },
+        { 'teacher.family': searchRegex },
+        { 'category.name': searchRegex }
+      ]
+    })
+      .populate('category', 'name')
+      .populate('teacher', 'name family expertise')
+      .lean()
+      .limit(5);
+
+    const formatted = courses.map(c => ({
+      _id: c._id,
+      title: c.title,
+      coverImage: url(c.coverImage),
+      previewVideo: url(c.previewVideo),
+      teacherName: c.teacher ? `${c.teacher.name} ${c.teacher.family}` : 'Unknown',
+      category: c.category?.name || '',
+      level: c.level,
+      duration: c.duration,
+      price: c.price,
+      discount: c.discount,
+      finalPrice: c.finalPrice,
+      isDiscountActive: c.isDiscountActive,
+      type: c.type,
+      studentCount: c.students.length,
+      rating: c.rating,
+      firstVideo: c.chapters[0]?.videos[0]
+        ? {
+            _id: c.chapters[0].videos[0]._id,
+            title: c.chapters[0].videos[0].title,
+            fileUrl: url(c.chapters[0].videos[0].filePath),
+            accessible: true
+          }
+        : null
+    }));
+
+    res.status(200).json({ suggestions: formatted });
+  } catch (err) {
+    console.error('Search error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = {
   getCourses,
   createCourse,
@@ -617,5 +778,6 @@ module.exports = {
   getComments,
   approveComment,
   getPendingComments,
-  accessCourseVideo
+  accessCourseVideo,
+  searchCourses
 };

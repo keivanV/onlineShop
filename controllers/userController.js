@@ -1,18 +1,60 @@
+// controllers/userController.js
 const User = require('../models/User');
 const Course = require('../models/Course');
 const Notification = require('../models/Notification');
 const Payment = require("../models/Payment");
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const url = (p) => (p ? `${BASE_URL}/uploads/${p}` : null);
+
 const getAllStudents = async (req, res) => {
   try {
-    const students = await User.find({ role: 'student' }).select('name family phone email role status subscription subscriptionExpiresAt coursesEnrolled rating expertise bio isProfileComplete');
-    const formattedStudents = students.map(student => ({
-      ...student._doc,
-      coursesCount: student.coursesEnrolled.length
-    }));
-    console.log(`Fetched ${students.length} students for admin`);
+    const students = await User.find({ role: 'student' })
+      .select('name family phone email role status subscription subscriptionExpiresAt coursesEnrolled profilePic createdAt')
+      .populate('coursesEnrolled', 'title coverImage courseRating courseRatingCount type price discount discountEnd')
+      .lean();
+
+    const formattedStudents = students.map(student => {
+      const enrolledCourses = student.coursesEnrolled.map(course => {
+        const isDiscountActive = course.discount > 0 && course.discountEnd && new Date() <= course.discountEnd;
+        const finalPrice = course.type === 'paid' && isDiscountActive
+          ? Math.round(course.price - (course.price * course.discount) / 100)
+          : course.price;
+
+        return {
+          courseId: course._id,
+          title: course.title,
+          coverImage: url(course.coverImage),
+          type: course.type,
+          price: course.price || 0,
+          finalPrice: finalPrice || 0,
+          isDiscountActive,
+          courseRating: course.courseRating || 0,
+          courseRatingCount: course.courseRatingCount || 0
+        };
+      });
+
+      return {
+        id: student._id,
+        name: student.name,
+        family: student.family,
+        fullName: `${student.name} ${student.family}`,
+        phone: student.phone,
+        email: student.email,
+        status: student.status,
+        subscription: student.subscription,
+        subscriptionExpiresAt: student.subscriptionExpiresAt,
+        profilePic: student.profilePic ? url(student.profilePic) : null,
+        createdAt: student.createdAt,
+        coursesCount: enrolledCourses.length,
+        enrolledCourses
+      };
+    });
+
+    console.log(`Fetched ${formattedStudents.length} students with course details`);
     res.status(200).json(formattedStudents);
   } catch (error) {
-    console.log(`Get students error: ${error.message}`, { error });
+    console.error('Get all students error:', error);
     res.status(500).json({ message: 'Server error while fetching students' });
   }
 };
@@ -22,22 +64,13 @@ const updateStudent = async (req, res) => {
     const { phone: paramPhone } = req.params;
     const { name, family, email, phone, birthdate, city, address, profilePic, status, subscription } = req.body;
 
-    console.log(`Received updateStudent request for phone: ${paramPhone}, Body: ${JSON.stringify(req.body, null, 2)}`);
-
     const user = await User.findOne({ phone: paramPhone, role: 'student' });
-    if (!user) {
-      console.log(`Student not found: ${paramPhone}`);
-      return res.status(404).json({ message: 'Student not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'Student not found' });
 
     if (phone && phone !== user.phone) {
-      if (!phone.trim()) {
-        console.log('Phone validation failed: Phone is empty');
-        return res.status(400).json({ message: 'Phone cannot be empty' });
-      }
+      if (!phone.trim()) return res.status(400).json({ message: 'Phone cannot be empty' });
       const existingUser = await User.findOne({ phone });
       if (existingUser && existingUser._id.toString() !== user._id.toString()) {
-        console.log(`Phone validation failed: Phone already in use: ${phone}`);
         return res.status(400).json({ message: 'Phone number already in use' });
       }
       user.phone = phone;
@@ -58,7 +91,7 @@ const updateStudent = async (req, res) => {
     console.log(`Student updated: ${savedUser.phone}`);
     res.status(200).json(savedUser);
   } catch (error) {
-    console.log(`Update student error: ${error.message}`, { error });
+    console.error('Update student error:', error);
     if (error.code === 11000 && error.keyPattern.phone) {
       return res.status(400).json({ message: 'Phone number already in use' });
     }
@@ -72,9 +105,7 @@ const updateProfile = async (req, res) => {
     const userId = req.user.id;
 
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     user.name = name || user.name;
     user.family = family || user.family;
@@ -84,52 +115,79 @@ const updateProfile = async (req, res) => {
     user.address = address || user.address;
     user.profilePic = profilePic || user.profilePic;
 
-    if (!user.isProfileComplete) {
-      user.isProfileComplete = true;
-    }
+    if (!user.isProfileComplete) user.isProfileComplete = true;
 
     const savedUser = await user.save();
     res.status(200).json(savedUser);
   } catch (error) {
-    console.log(`Update profile error: ${error.message}`, { error });
+    console.error('Update profile error:', error);
     res.status(500).json({ message: 'Server error while updating profile' });
   }
 };
 
 const getAllTeachers = async (req, res) => {
   try {
-    const teachers = await User.find({ role: 'teacher' }).select('name family email coursesTaught rating status expertise');
-    const formattedTeachers = teachers.map(teacher => ({
-      ...teacher._doc,
-      coursesCount: teacher.coursesTaught.length
-    }));
-    console.log(`Fetched ${teachers.length} teachers for admin`);
+    const teachers = await User.find({ role: 'teacher' })
+      .select('name family phone email expertise bio rating coursesTaught profilePic createdAt')
+      .populate({
+        path: 'coursesTaught',
+        select: 'title coverImage status type students courseRating courseRatingCount',
+        match: { status: 'active' }
+      })
+      .lean();
+
+    const formattedTeachers = teachers.map(teacher => {
+      const activeCourses = teacher.coursesTaught || [];
+      const taughtCourses = activeCourses.map(course => ({
+        courseId: course._id,
+        title: course.title,
+        coverImage: url(course.coverImage),
+        type: course.type,
+        studentCount: course.students?.length || 0,
+        courseRating: course.courseRating || 0,
+        courseRatingCount: course.courseRatingCount || 0
+      }));
+
+      return {
+        id: teacher._id,
+        phone: teacher.phone,
+        name: teacher.name,
+        family: teacher.family,
+        fullName: `${teacher.name} ${teacher.family}`,
+        email: teacher.email,
+        expertise: teacher.expertise || '',
+        bio: teacher.bio || '',
+        rating: teacher.rating || 0,
+        profilePic: teacher.profilePic ? url(teacher.profilePic) : null,
+        createdAt: teacher.createdAt,
+        coursesCount: taughtCourses.length,
+        totalStudents: taughtCourses.reduce((sum, c) => sum + c.studentCount, 0),
+        taughtCourses
+      };
+    });
+
+    console.log(`Fetched ${formattedTeachers.length} teachers with course details`);
     res.status(200).json(formattedTeachers);
   } catch (error) {
-    console.log(`Get teachers error: ${error.message}`, { error });
+    console.error('Get all teachers error:', error);
     res.status(500).json({ message: 'Server error while fetching teachers' });
   }
 };
 
-
 const addTeacher = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone || !phone.trim()) {
-      return res.status(400).json({ message: 'Phone number is required' });
-    }
+    if (!phone || !phone.trim()) return res.status(400).json({ message: 'Phone number is required' });
 
     const user = await User.findOne({ phone, role: 'student' });
-    if (!user) {
-      return res.status(404).json({ message: 'Student not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'Student not found' });
 
     user.role = 'teacher';
     const savedUser = await user.save();
     console.log(`Teacher added: ${phone}`);
     res.status(200).json(savedUser);
   } catch (error) {
-    console.log(`Add teacher error: ${error.message}`, { error });
+    console.error('Add teacher error:', error);
     res.status(500).json({ message: 'Server error while adding teacher' });
   }
 };
@@ -140,14 +198,10 @@ const updateTeacher = async (req, res) => {
     const { name, family, email, expertise, phone, nationalId, address, bio, status, profilePic } = req.body;
 
     const user = await User.findOne({ phone: paramPhone, role: 'teacher' });
-    if (!user) {
-      return res.status(404).json({ message: 'Teacher not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'Teacher not found' });
 
     if (phone && phone !== user.phone) {
-      if (!phone.trim()) {
-        return res.status(400).json({ message: 'Phone cannot be empty' });
-      }
+      if (!phone.trim()) return res.status(400).json({ message: 'Phone cannot be empty' });
       const existingUser = await User.findOne({ phone });
       if (existingUser && existingUser._id.toString() !== user._id.toString()) {
         return res.status(400).json({ message: 'Phone number already in use' });
@@ -170,7 +224,7 @@ const updateTeacher = async (req, res) => {
     console.log(`Teacher updated: ${savedUser.phone}`);
     res.status(200).json(savedUser);
   } catch (error) {
-    console.log(`Update teacher error: ${error.message}`, { error });
+    console.error('Update teacher error:', error);
     if (error.code === 11000 && error.keyPattern.phone) {
       return res.status(400).json({ message: 'Phone number already in use' });
     }
@@ -182,20 +236,18 @@ const getUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. اطلاعات کامل کاربر
+    // 1. اطلاعات کاربر
     const user = await User.findById(userId)
       .select('name family phone email role status subscription subscriptionExpiresAt bio expertise profilePic isProfileComplete createdAt lastLogin')
       .lean();
 
-    if (!user) {
-      return res.status(404).json({ message: 'کاربر یافت نشد' });
-    }
+    if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
-    // 2. دوره‌های ثبت‌نام شده + اطلاعات کامل + مدرس
+    // 2. دوره‌های ثبت‌نام شده
     const enrolledCourses = await Course.find({ students: userId, status: 'active' })
-      .populate('teacher', 'name family expertise bio profilePic')
+      .populate('teacher', 'name family rating expertise bio profilePic')
       .populate('category', 'name')
-      .select('title description coverImage level duration type price discount discountEnd previewVideoUrl presentationMethod chapters students createdAt')
+      .select('title description coverImage level duration type price discount discountEnd previewVideoUrl presentationMethod chapters students createdAt courseRating courseRatingCount')
       .lean();
 
     const formattedEnrolledCourses = enrolledCourses.map(course => {
@@ -209,7 +261,7 @@ const getUserDashboard = async (req, res) => {
           id: course._id,
           title: course.title,
           description: course.description,
-          coverImage: course.coverImage,
+          coverImage: url(course.coverImage),
           level: course.level,
           duration: course.duration,
           type: course.type,
@@ -221,21 +273,24 @@ const getUserDashboard = async (req, res) => {
           presentationMethod: course.presentationMethod,
           chaptersCount: course.chapters?.length || 0,
           studentCount: course.students?.length || 0,
-          createdAt: course.createdAt
+          createdAt: course.createdAt,
+          courseRating: course.courseRating || 0,
+          courseRatingCount: course.courseRatingCount || 0
         },
         teacher: {
           id: teacher._id,
           name: `${teacher.name} ${teacher.family}`,
           expertise: teacher.expertise || '',
           bio: teacher.bio || '',
-          profilePic: teacher.profilePic ? teacher.profilePic : null
+          profilePic: teacher.profilePic ? url(teacher.profilePic) : null,
+          rating: teacher.rating || 0
         }
       };
     });
 
-    // 3. کامنت‌های کاربر + دوره مربوطه
+    // 3. کامنت‌های کاربر + اطلاعات دوره
     const coursesWithComments = await Course.find({ 'comments.user': userId })
-      .select('title comments')
+      .select('title coverImage courseRating courseRatingCount comments')
       .lean();
 
     const userComments = [];
@@ -245,27 +300,31 @@ const getUserDashboard = async (req, res) => {
         .map(c => ({
           commentId: c._id,
           text: c.text,
-          rating: c.rating || 0,
+          rating: c.rating,
           status: c.status,
           createdAt: c.createdAt
         }));
 
-      userComments.push({
-        courseId: course._id,
-        courseTitle: course.title,
-        comments: relevantComments
-      });
+      if (relevantComments.length > 0) {
+        userComments.push({
+          courseId: course._id,
+          courseTitle: course.title,
+          courseCover: url(course.coverImage),
+          courseRating: course.courseRating || 0,
+          courseRatingCount: course.courseRatingCount || 0,
+          comments: relevantComments
+        });
+      }
     }
 
-    // 4. اعلانات کاربر
+    // 4. اعلانات
     const notifications = await Notification.find({ user: userId })
       .select('title message type relatedId isRead createdAt')
       .sort({ createdAt: -1 })
       .limit(20)
       .lean();
 
-
-    // 5. تاریخچه پرداخت (آخرین 10)
+    // 5. تاریخچه پرداخت
     const recentPayments = await Payment.find({ user: userId })
       .populate('courses.course', 'title coverImage')
       .populate('subscriptionPlan', 'duration')
@@ -283,7 +342,7 @@ const getUserDashboard = async (req, res) => {
         ...p.courses.map(c => ({
           type: 'course',
           title: c.course.title,
-          coverImage: c.course.coverImage ? `${BASE_URL}/uploads/${c.course.coverImage}` : null,
+          coverImage: c.course.coverImage ? url(c.course.coverImage) : null,
           id: c.course._id
         })),
         ...(p.subscriptionPlan ? [{
@@ -293,12 +352,11 @@ const getUserDashboard = async (req, res) => {
         }] : [])
       ]
     }));
-      
-    // پاسخ نهایی
+
     const dashboard = {
       user: {
         ...user,
-        profilePic: user.profilePic ? user.profilePic : null,
+        profilePic: user.profilePic ? url(user.profilePic) : null,
         coursesEnrolledCount: formattedEnrolledCourses.length,
         commentsCount: userComments.reduce((sum, c) => sum + c.comments.length, 0)
       },

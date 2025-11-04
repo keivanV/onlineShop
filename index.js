@@ -21,7 +21,7 @@ const basketRoutes = require('./routes/basket');
 const podcastRoutes = require('./routes/podcasts');
 const notificationRoutes = require('./routes/notifications');
 const courseDetailRoutes = require('./routes/courseDetail');
-const courseSearchRoutes = require('./routes/courseSearch');
+
 
 dotenv.config();
 
@@ -52,7 +52,7 @@ app.use('/api/basket', basketRoutes);
 app.use('/api/podcasts', podcastRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/course', courseDetailRoutes);
-app.use('/api/course/search', courseSearchRoutes);
+
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

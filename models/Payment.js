@@ -9,7 +9,7 @@ const paymentSchema = new mongoose.Schema({
   }],
   subscriptionPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'SubscriptionPlan', default: null },
   amount: { type: Number, required: true }, // Total amount in Tomans
-  authority: { type: String, required: true }, // PayPing authority
+  authority: { type: String }, // PayPing authority
   refId: { type: String }, // PayPing reference ID after successful payment
   status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
   createdAt: { type: Date, default: Date.now },

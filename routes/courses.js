@@ -7,7 +7,7 @@ const { verifyToken, verifyAdmin } = require('../middleware/auth');
 const {
   getCourses, createCourse, editCourse, deleteCourse,
   enrollCourse, addComment, getComments,
-  approveComment, getPendingComments, getCourse
+  approveComment, getPendingComments, getCourse, searchCourses
 } = require('../controllers/courseController');
 
 const router = express.Router();
@@ -46,7 +46,7 @@ const upload = multer({
 /* Public routes                                                      */
 /* ------------------------------------------------------------------ */
 router.get('/', getCourses);
-
+router.get('/search', searchCourses);
 /* ------------------------------------------------------------------ */
 /* Admin routes – create / edit (coverImage only)                     */
 /* ------------------------------------------------------------------ */

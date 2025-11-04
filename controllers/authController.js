@@ -82,6 +82,10 @@ const verifyOTP = async (req, res) => {
 
       return res.status(200).json({
         message: 'Login successful',
+        phone: user.phone, 
+        name: user.name, 
+        family: user.family,
+        email: user.email,
         accessToken,
         refreshToken,
         requiresCompletion: false
