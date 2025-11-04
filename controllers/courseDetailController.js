@@ -96,7 +96,7 @@ const getCourseDetail = async (req, res) => {
 
     const teacher = course.teacher ? {
       _id: course.teacher._id,
-      fullName: `${course.teacher.name}`,
+      name: `${course.teacher.name}`,
       expertise: course.teacher.expertise || '',
       bio: course.teacher.bio || '',
       rating: course.teacher.rating || 0

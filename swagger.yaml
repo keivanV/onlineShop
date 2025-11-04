@@ -1722,7 +1722,7 @@ paths:
                     type: object
                     properties:
                       _id: { type: string }
-                      fullName: { type: string }
+                      name: { type: string }
                       expertise: { type: string }
                       bio: { type: string }
                       rating: { type: number }
