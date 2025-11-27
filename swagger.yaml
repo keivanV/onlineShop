@@ -719,13 +719,9 @@ paths:
               type: object
               properties:
                 tempUserId: { type: string }
-                name: { type: string }
-               
+                name: { type: string }               
                 email: { type: string }
-                birthdate: { type: string, format: date }
-                city: { type: string }
-                address: { type: string }
-                profilePic: { type: string }
+
               required: [tempUserId, name,  email]
       responses:
         '201':
@@ -1007,10 +1003,6 @@ paths:
                 
                 email: { type: string }
                 phone: { type: string }
-                birthdate: { type: string, format: date }
-                city: { type: string }
-                address: { type: string }
-                profilePic: { type: string }
                 status: { type: string, enum: [active, ban] }
                 subscription: { type: string, enum: [regular, vip] }
                 subscriptionExpiresAt: { type: string, format: date-time }
@@ -1061,11 +1053,7 @@ paths:
               type: object
               properties:
                 name: { type: string }
-                
                 email: { type: string }
-                birthdate: { type: string, format: date }
-                city: { type: string }
-                address: { type: string }
                 profilePic: { type: string }
       responses:
         '200':
