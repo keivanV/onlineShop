@@ -47,68 +47,153 @@ const updateTeacherRating = async (teacherId) => {
 };
 
 
+const formatFullCourse = async (courseDoc, currentUserId = null) => {
+  const course = await Course.populate(courseDoc, [
+    { path: 'teacher', select: 'name expertise bio rating profilePic phone email' },
+    { path: 'students', select: 'name profilePic email' },
+    { path: 'comments.user', select: 'name profilePic' },
+    { path: 'category', select: 'name slug' }
+  ]);
+
+  const isEnrolled = currentUserId 
+    ? course.students.some(s => s._id.toString() === currentUserId)
+    : false;
+
+  const approvedComments = (course.comments || [])
+    .filter(c => c.status === 'approved')
+    .map(c => ({
+      _id: c._id.toString(),
+      text: c.text,
+      rating: c.rating,
+      createdAt: c.createdAt,
+      user: {
+        _id: c.user?._id?.toString(),
+        name: c.user?.name || 'ناشناس',
+        profilePic: c.user?.profilePic ? url(c.user.profilePic) : null
+      }
+    }));
+
+  const isLimited = course.isLimitedCapacity;
+  const remaining = course.remainingCapacity;
+
+  return {
+    _id: course._id.toString(),
+    title: course.title,
+    slug: course.slug || course._id.toString(),
+    description: course.description,
+    coverImage: url(course.coverImage),
+    previewVideoUrl: course.previewVideoUrl ? url(course.previewVideoUrl) : null,
+
+    teacher: course.teacher ? {
+      _id: course.teacher._id.toString(),
+      name: course.teacher.name?.trim() || 'نامشخص',
+      expertise: course.teacher.expertise || '',
+      bio: course.teacher.bio || '',
+      rating: Number(course.teacher.rating || 0).toFixed(1),
+      profilePic: course.teacher.profilePic ? url(course.teacher.profilePic) : null,
+      phone: course.teacher.phone || null,
+      email: course.teacher.email || null
+    } : null,
+
+    category: course.category.map(cat => ({
+      _id: cat._id.toString(),
+      name: cat.name,
+      slug: cat.slug
+    })),
+
+    level: course.level,
+    type: course.type,
+    duration: course.duration,
+    presentationMethod: course.presentationMethod,
+
+    price: course.price || 0,
+    discount: course.discount || 0,
+    discountEnd: course.discountEnd,
+    finalPrice: course.finalPrice,
+    isDiscountActive: course.isDiscountActive,
+
+    status: course.status,
+    displayStatus: course.displayStatus,
+
+    canEnroll: course.canEnroll,
+    isEnrolled,
+    isFull: course.isFull,
+    isSoldOut: course.status === 'sold-out' || course.isFull,
+
+    isLimitedCapacity: isLimited,         
+    capacity: course.capacity,             
+    studentCount: course.students.length, 
+    remainingCapacity: remaining,          
+
+    students: course.students.map(s => ({
+      _id: s._id.toString(),
+      name: s.name,
+      profilePic: s.profilePic ? url(s.profilePic) : null,
+      email: s.email || null
+    })),
+
+    registrationStart: course.registrationStart,
+    registrationEnd: course.registrationEnd,
+    courseStartDate: course.courseStartDate,
+    courseEndDate: course.courseEndDate,
+
+    chapters: course.chapters.map(ch => ({
+      _id: ch._id.toString(),
+      title: ch.title,
+      description: ch.description || '',
+      duration: ch.duration,
+      videos: ch.videos.map(v => ({
+        _id: v._id.toString(),
+        title: v.title,
+        description: v.description || '',
+        duration: v.duration,
+        videoUrl: v.videoUrl
+      }))
+    })),
+
+    chapterCount: course.chapters.length,
+    videoCount: course.chapters.reduce((sum, ch) => sum + ch.videos.length, 0),
+
+    comments: approvedComments,
+    pendingCommentsCount: course.comments.filter(c => c.status === 'pending').length,
+    rating: Number(course.courseRating || 0).toFixed(1),
+    ratingCount: course.courseRatingCount || 0,
+
+    createdAt: course.createdAt,
+    updatedAt: course.updatedAt
+  };
+};
+
 /* ------------------------------------------------------------------ */
 /* GET /api/courses – list all courses (public)                       */
 /* ------------------------------------------------------------------ */
 const getCourses = async (req, res) => {
   try {
-    // فقط دوره‌های فعال
-    const query = { status: 'active' };
+    const userId = req.user?._id?.toString();
 
-    const courses = await Course.find(query)
-      .populate('category', 'name')
-      .populate('teacher', 'name expertise rating')
-      .lean();
+    // حذف .lean() ← این خط حیاتیه!
+    const courses = await Course.find({ status: { $nin: ['stopped'] } })
+      .populate('teacher', 'name expertise bio rating profilePic phone email')
+      .populate('students', 'name profilePic email')
+      .populate('comments.user', 'name profilePic')
+      .populate('category', 'name slug');
+      // .lean() رو حذف کردیم → virtualها کار می‌کنن
 
-    // تابع تبدیل دوره
-    const formatCourse = (c) => ({
-      ...c,
-      teacherName: c.teacher ? `${c.teacher.name} ` : 'نامشخص',
-      teacherRating: c.teacher?.rating || 0,
-      studentCount: c.students.length,
-      expertise: c.teacher?.expertise || '',
-      isDiscountActive: c.isDiscountActive,
-      finalPrice: c.finalPrice,
-      coverImage: url(c.coverImage),
-      previewVideoUrl: c.previewVideoUrl || null,
-      updatedAt: c.updatedAt,
-      createdAt: c.createdAt,
-      chapters: c.chapters.map(ch => ({
-        ...ch,
-        videos: ch.videos.map(v => ({
-          ...v,
-          videoUrl: v.videoUrl
-        }))
-      }))
-    });
+    const formatted = await Promise.all(
+      courses.map(course => formatFullCourse(course, userId))
+    );
 
-    const formatted = courses.map(formatCourse);
-
-    const result = {
-      // 1. newest
-      newest: [...formatted]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-
-      // 2. Popular Coourses
-      popular: [...formatted]
-        .sort((a, b) => b.studentCount - a.studentCount),
-
-      // 3.  Courses with OFF% 
+    res.json({
+      newest: [...formatted].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+      popular: [...formatted].sort((a, b) => b.studentCount - a.studentCount),
       discount: formatted.filter(c => c.isDiscountActive && c.type === 'paid'),
-
-      // 4. VIP Courses 
       vip: formatted.filter(c => c.type === 'vip'),
-
-      // 5. paid Courses
-      paid: formatted.filter(c => c.type === 'paid' && !c.isDiscountActive),
-
-      // 6. all Courses 
+      paid: formatted.filter(c => c.type === 'paid'),
+      free: formatted.filter(c => c.type === 'free'),
       all: formatted
-    };
-
-    res.status(200).json(result);
+    });
   } catch (err) {
-    console.error('Get courses error:', err);
+    console.error('getCourses error:', err);
     res.status(500).json({ message: 'خطای سرور' });
   }
 };
@@ -312,7 +397,7 @@ const editCourse = async (req, res) => {
     const basePath = path.join(__dirname, '..', 'uploads', 'courses', `course_${course._id}`);
     ensureDir(basePath);
 
-    // ---- آپدیت کاور -------------------------------------------------
+    // --- آپدیت کاور (فقط اگر فایل ارسال شده بود) ---
     if (coverFile) {
       if (course.coverImage) {
         const oldPath = path.join(__dirname, '..', 'uploads', course.coverImage);
@@ -321,9 +406,9 @@ const editCourse = async (req, res) => {
       course.coverImage = saveFile(coverFile, basePath);
     }
 
-    // ---- آپدیت فیلدهای ساده ----------------------------------------
+    // --- آپدیت فیلدهای ساده (فقط اگر مقدار معتبر داشت) ---
     const safeUpdate = (field, value, parser = v => v) => {
-      if (value !== undefined && value !== '' && !Number.isNaN(value)) {
+      if (value !== undefined && value !== null && value !== '' && !Number.isNaN(value)) {
         course[field] = parser(value);
       }
     };
@@ -335,76 +420,88 @@ const editCourse = async (req, res) => {
     safeUpdate('presentationMethod', req.body.presentationMethod);
     safeUpdate('previewVideoUrl', req.body.previewVideoUrl);
 
+    // --- نوع دوره ---
     if (req.body.type && ['free', 'vip', 'paid'].includes(req.body.type)) {
       course.type = req.body.type;
     }
 
+    // --- قیمت و تخفیف (فقط برای دوره‌های پولی) ---
     if (course.type === 'paid') {
       safeUpdate('price', req.body.price, parseFloat);
       safeUpdate('discount', req.body.discount, parseFloat);
 
-      if (course.discount > 0) {
-        const end = calculateDiscountEnd(
-          parseInt(req.body.discountHours) || 0,
-          parseInt(req.body.discountMinutes) || 0,
-          parseInt(req.body.discountSeconds) || 0
-        );
-        if (end) course.discountEnd = end;
-      } else {
-        course.discountEnd = undefined;
+      // تخفیف فقط اگر مقدارش تغییر کرده باشه
+      if (req.body.discount !== undefined) {
+        const discountValue = parseFloat(req.body.discount);
+        if (discountValue > 0) {
+          const end = calculateDiscountEnd(
+            parseInt(req.body.discountHours) || 0,
+            parseInt(req.body.discountMinutes) || 0,
+            parseInt(req.body.discountSeconds) || 0
+          );
+          course.discountEnd = end || undefined;
+        } else {
+          course.discountEnd = undefined;
+        }
       }
-    } else {
+    } else if (req.body.type && req.body.type !== 'paid') {
       course.price = undefined;
       course.discount = 0;
       course.discountEnd = undefined;
     }
 
-    // ---- آپدیت category (آرایه) ------------------------------------
-    if (req.body.category) {
-      const cats = Array.isArray(req.body.category) ? req.body.category : [req.body.category];
-      if (cats.length === 0) {
-        return res.status(400).json({ message: 'حداقل یک دسته‌بندی الزامی است' });
-      }
-
-      const validCats = await Category.find({ _id: { $in: cats } });
-      if (validCats.length !== cats.length) {
-        return res.status(400).json({ message: 'یک یا چند دسته‌بندی نامعتبر است' });
-      }
-
-      course.category = cats;
+    // --- توضیحات دوره ---
+    if (req.body.description !== undefined && req.body.description !="") {
+      course.description = req.body.description?.trim() || '';
     }
 
-    if (req.body.description !== undefined && req.body.description !== '') {
-      course.description = req.body.description.trim();
-    }
-
-    if (req.body.teacher) {
-      const newTeacherId = req.body.teacher;
-
-      if (newTeacherId !== course.teacher.toString()) {
-        const t = await User.findById(newTeacherId);
-        if (!t || t.role !== 'teacher') {
-          return res.status(400).json({ message: 'مدرس نامعتبر است' });
+    // --- دسته‌بندی ---
+    if (req.body.category !== undefined) {
+      let cats = [];
+      if (typeof req.body.category === 'string') {
+        try {
+          cats = req.body.category.trim().startsWith('[')
+            ? JSON.parse(req.body.category)
+            : req.body.category.split(',').map(id => id.trim()).filter(Boolean);
+        } catch (e) {
+          return res.status(400).json({ message: 'فرمت دسته‌بندی نامعتبر است' });
         }
+      } else if (Array.isArray(req.body.category)) {
+        cats = req.body.category.filter(Boolean);
+      }
 
-        // حذف از مدرس قبلی
-        await User.findByIdAndUpdate(course.teacher, {
-          $pull: { coursesTaught: course._id }
-        });
-
-        // اضافه به مدرس جدید
-        await User.findByIdAndUpdate(newTeacherId, {
-          $addToSet: { coursesTaught: course._id }
-        });
-
-        course.teacher = newTeacherId;
+      if (cats.length > 0) {
+        const validCats = await Category.find({ _id: { $in: cats } });
+        if (validCats.length !== cats.length) {
+          return res.status(400).json({ message: 'یک یا چند دسته‌بندی نامعتبر است' });
+        }
+        course.category = cats;
       }
     }
 
-    // ---- فصل‌ها و ویدیوها -----------------------------------------
+    // --- مدرس ---
+    if (req.body.teacher && req.body.teacher !== course.teacher.toString()) {
+      const newTeacher = await User.findById(req.body.teacher);
+      if (!newTeacher || newTeacher.role !== 'teacher') {
+        return res.status(400).json({ message: 'مدرس نامعتبر است' });
+      }
+      await User.findByIdAndUpdate(course.teacher, { $pull: { coursesTaught: course._id } });
+      await User.findByIdAndUpdate(req.body.teacher, { $addToSet: { coursesTaught: course._id } });
+      course.teacher = req.body.teacher;
+    }
+
+    // --- ظرفیت دوره (کاملاً ایمن) ---
+    if (req.body.capacity !== undefined && req.body.capacity !== null && req.body.capacity !== '') {
+      const newCapacity = parseInt(req.body.capacity);
+      if (!isNaN(newCapacity) && newCapacity >= 0) {
+        course.capacity = newCapacity;
+      }
+    }
+
+    // --- فصل‌ها و ویدیوها (ضد Swagger empty value!) ---
     const chapterIndices = [...new Set(
       Object.keys(req.body)
-        .filter(k => k.startsWith('chapters['))
+        .filter(k => k.startsWith('chapters[') && k.includes('].title'))
         .map(k => k.match(/chapters\[(\d+)\]/)[1])
     )].map(Number);
 
@@ -412,61 +509,58 @@ const editCourse = async (req, res) => {
       const updatedChapters = [...course.chapters];
 
       for (const chIdx of chapterIndices) {
-        const videoIndices = [...new Set(
-          Object.keys(req.body)
-            .filter(k => k.startsWith(`chapters[${chIdx}].videos[`))
-            .map(k => k.match(/videos\[(\d+)\]/)[1])
-        )].map(Number);
+        const chapterTitle = req.body[`chapters[${chIdx}].title`];
+        // اگر عنوان فصل خالی یا وجود نداشت → این فصل ویرایش نشده
+        if (!chapterTitle || chapterTitle.trim() === '') continue;
 
         if (!updatedChapters[chIdx]) {
           updatedChapters[chIdx] = { title: '', description: '', duration: 0, videos: [] };
         }
 
         const chapter = updatedChapters[chIdx];
+        chapter.title = chapterTitle.trim();
+        chapter.description = req.body[`chapters[${chIdx}].description`]?.trim() || '';
+        chapter.duration = parseInt(req.body[`chapters[${chIdx}].duration`]) || 0;
 
-        if (req.body[`chapters[${chIdx}].title`] !== undefined) {
-          chapter.title = req.body[`chapters[${chIdx}].title`] || `فصل ${chIdx + 1}`;
-        }
-        if (req.body[`chapters[${chIdx}].description`] !== undefined) {
-          chapter.description = req.body[`chapters[${chIdx}].description`] || '';
-        }
-        if (req.body[`chapters[${chIdx}].duration`] !== undefined) {
-          chapter.duration = parseInt(req.body[`chapters[${chIdx}].duration`]) || 0;
-        }
+        const videoIndices = [...new Set(
+          Object.keys(req.body)
+            .filter(k => k.startsWith(`chapters[${chIdx}].videos[`) && k.includes('].videoUrl'))
+            .map(k => k.match(/videos\[(\d+)\]/)[1])
+        )].map(Number);
 
         const updatedVideos = [...(chapter.videos || [])];
 
         for (const vIdx of videoIndices) {
           const videoUrl = req.body[`chapters[${chIdx}].videos[${vIdx}].videoUrl`];
-          if (!videoUrl) return res.status(400).json({ message: `آدرس ویدیو ${vIdx + 1} الزامی است` });
+          // اگر videoUrl خالی بود → این ویدیو ویرایش نشده
+          if (!videoUrl || videoUrl.trim() === '') continue;
 
-          if (!updatedVideos[vIdx]) {
-            updatedVideos[vIdx] = { title: '', description: '', duration: 0, videoUrl: '' };
-          }
+          if (!updatedVideos[vIdx]) updatedVideos[vIdx] = {};
 
           const video = updatedVideos[vIdx];
-          if (req.body[`chapters[${chIdx}].videos[${vIdx}].title`] !== undefined) {
-            video.title = req.body[`chapters[${chIdx}].videos[${vIdx}].title`] || `ویدیو ${vIdx + 1}`;
-          }
-          if (req.body[`chapters[${chIdx}].videos[${vIdx}].description`] !== undefined) {
-            video.description = req.body[`chapters[${chIdx}].videos[${vIdx}].description`] || '';
-          }
-          if (req.body[`chapters[${chIdx}].videos[${vIdx}].duration`] !== undefined) {
-            video.duration = parseInt(req.body[`chapters[${chIdx}].videos[${vIdx}].duration`]) || 0;
-          }
-          video.videoUrl = videoUrl;
+          video.title = req.body[`chapters[${chIdx}].videos[${vIdx}].title`]?.trim() || `ویدیو ${vIdx + 1}`;
+          video.description = req.body[`chapters[${chIdx}].videos[${vIdx}].description`]?.trim() || '';
+          video.duration = parseInt(req.body[`chapters[${chIdx}].videos[${vIdx}].duration`]) || 0;
+          video.videoUrl = videoUrl.trim();
         }
 
-        chapter.videos = updatedVideos.filter(v => v && v.videoUrl);
+        chapter.videos = updatedVideos.filter(v => v && v.videoUrl && v.videoUrl.trim() !== '');
       }
 
-      course.chapters = updatedChapters.filter(ch => ch && ch.title && ch.videos.length > 0);
+      course.chapters = updatedChapters.filter(ch => ch && ch.title && ch.videos?.length > 0);
     }
 
+    // ذخیره نهایی — pre-save hook خودش isFull و remainingCapacity رو آپدیت می‌کنه
     await course.save();
     cleanupTemp();
 
-    res.json(course);
+    // پاسخ با virtual ها
+    const populated = await Course.findById(course._id)
+      .populate('teacher', 'name expertise rating')
+      .populate('category', 'name');
+
+    res.json(populated);
+
   } catch (err) {
     console.error('Edit course error:', err.message);
     cleanupTemp();
@@ -502,38 +596,46 @@ const deleteCourse = async (req, res) => {
 const enrollCourse = async (req, res) => {
   try {
     const { courseId } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id;
 
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
-
-    if (course.students.includes(userId)) {
+    if (course.students.some(s => s.toString() === userId.toString())) {
       return res.status(400).json({ message: 'شما قبلاً ثبت‌نام کرده‌اید' });
+    }
+
+    if (!course.canEnroll) {
+      return res.status(400).json({
+        message: course.isFull ? 'ظرفیت دوره تکمیل شده است' : 'مهلت ثبت‌نام به پایان رسیده',
+        isFull: course.isFull,
+        remainingCapacity: course.remainingCapacity
+      });
     }
 
     if (course.type === 'paid') {
       return res.status(402).json({ message: 'نیاز به پرداخت' });
     }
 
-    if (course.type === 'vip' && user.subscription !== 'vip') {
-      return res.status(403).json({ message: 'اشتراک VIP لازم است' });
+    if (course.type === 'vip') {
+      const user = await User.findById(userId);
+      if (user.subscription !== 'vip' || new Date() > user.subscriptionExpiresAt) {
+        return res.status(403).json({ message: 'اشتراک VIP فعال لازم است' });
+      }
     }
 
     course.students.push(userId);
-    await course.save();
+    await course.save(); // pre-save خودش status رو آپدیت می‌کنه
 
-    user.coursesEnrolled.push(courseId);
-    await user.save();
+    await User.findByIdAndUpdate(userId, { $addToSet: { coursesEnrolled: courseId } });
 
     res.json({ message: 'ثبت‌نام با موفقیت انجام شد' });
   } catch (err) {
-    console.error(err);
+    console.error('enrollCourse error:', err);
     res.status(500).json({ message: 'خطای سرور' });
   }
 };
+
 
 const addComment = async (req, res) => {
   try {
@@ -711,62 +813,124 @@ const accessCourseVideo = async (req, res) => {
   }
 };
 
-
 const searchCourses = async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || q.trim().length < 2) {
-      return res.status(400).json({ message: 'Query must be at least 2 characters' });
-    }
+    if (!q || q.trim().length < 2) return res.status(400).json({ message: 'حداقل ۲ کاراکتر وارد کنید' });
 
-    const searchRegex = new RegExp(q.trim(), 'i');
+    const regex = new RegExp(q.trim(), 'i');
+    const userId = req.user?._id?.toString();
 
     const courses = await Course.find({
-      status: 'active',
+      status: { $nin: ['stopped'] },
       $or: [
-        { title: searchRegex },
-        { 'teacher.name': searchRegex },
-
-        { 'category.name': searchRegex }
+        { title: regex },
+        { description: regex },
+        { 'teacher.name': regex },
+        { 'category.name': regex }
       ]
     })
-      .populate('category', 'name')
-      .populate('teacher', 'name  expertise')
-      .lean()
-      .limit(5);
+      .populate('teacher', 'name expertise bio rating profilePic')
+      .populate('category', 'name slug')
+      .limit(8)
+      .sort({ createdAt: -1 });
 
-    const formatted = courses.map(c => ({
-      _id: c._id,
-      title: c.title,
-      coverImage: url(c.coverImage),
-      previewVideo: url(c.previewVideo),
-      teacherName: c.teacher ? `${c.teacher.name}` : 'Unknown',
-      category: c.category?.name || '',
-      level: c.level,
-      duration: c.duration,
-      price: c.price,
-      discount: c.discount,
-      finalPrice: c.finalPrice,
-      isDiscountActive: c.isDiscountActive,
-      type: c.type,
-      studentCount: c.students.length,
-      rating: c.rating,
-      firstVideo: c.chapters[0]?.videos[0]
-        ? {
-            _id: c.chapters[0].videos[0]._id,
-            title: c.chapters[0].videos[0].title,
-            fileUrl: url(c.chapters[0].videos[0].filePath),
+    const suggestions = await Promise.all(
+      courses.map(async (course) => {
+        const formatted = await formatFullCourse(course, userId);
+        const firstVideo = course.chapters?.[0]?.videos?.[0];
+        if (firstVideo) {
+          formatted.firstVideo = {
+            _id: firstVideo._id.toString(),
+            title: firstVideo.title,
+            duration: firstVideo.duration,
+            videoUrl: firstVideo.videoUrl,
             accessible: true
-          }
-        : null
-    }));
+          };
+        }
+        return formatted;
+      })
+    );
 
-    res.status(200).json({ suggestions: formatted });
+    res.json({
+      success: true,
+      query: q.trim(),
+      count: suggestions.length,
+      suggestions
+    });
   } catch (err) {
-    console.error('Search error:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('searchCourses error:', err);
+    res.status(500).json({ message: 'خطا در جستجو' });
   }
 };
+
+const filterCourses = async (req, res) => {
+  try {
+    const {
+      sort = 'newest', search = '', freeCourse, onlyDiscount,
+      type, category, level, page = 1, limit = 12
+    } = req.query;
+
+    const query = { status: { $nin: ['stopped'] } };
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const userId = req.user?._id?.toString();
+
+    if (search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      query.$or = [{ title: regex }, { description: regex }];
+    }
+    if (freeCourse === 'true') query.type = 'free';
+    if (freeCourse === 'false') query.type = { $in: ['paid', 'vip'] };
+    if (onlyDiscount === 'true') {
+      query.discount = { $gt: 0 };
+      query.discountEnd = { $gt: new Date() };
+    }
+    if (type) {
+      const types = type.split(',').map(t => t.trim()).filter(Boolean);
+      if (types.length) query.type = { $in: types };
+    }
+    if (category) {
+      const cats = category.split(',').map(c => c.trim()).filter(Boolean);
+      if (cats.length) {
+        const catDocs = await Category.find({ slug: { $in: cats } }).select('_id');
+        query.category = { $in: catDocs.map(c => c._id) };
+      }
+    }
+    if (level) query.level = level;
+
+    const sortOptions = {
+      newest: { createdAt: -1 },
+      popular: { 'students.length': -1 },
+      price_asc: { finalPrice: 1 },
+      price_desc: { finalPrice: -1 }
+    };
+
+    const courses = await Course.find(query)
+      .populate('teacher', 'name expertise bio rating profilePic')
+      .populate('category', 'name slug')
+      .sort(sortOptions[sort] || { createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Course.countDocuments(query);
+    const formatted = await Promise.all(courses.map(c => formatFullCourse(c, userId)));
+
+    res.json({
+      courses: formatted,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalCourses: total,
+        hasNext: skip + courses.length < total,
+        hasPrev: page > 1
+      }
+    });
+  } catch (err) {
+    console.error('filterCourses error:', err);
+    res.status(500).json({ message: 'خطای سرور در فیلتر' });
+  }
+};
+
 
 module.exports = {
   getCourses,
@@ -779,5 +943,6 @@ module.exports = {
   approveComment,
   getPendingComments,
   accessCourseVideo,
-  searchCourses
+  searchCourses,
+  filterCourses
 };

@@ -6,61 +6,149 @@ const url = (path) => (path ? `${BASE_URL}/uploads/${path}` : null);
 
 /**
  * GET /api/course/search?q=react
- * Autocomplete-style search on course title, teacher, category
- * Returns up to 5 FULL course details
+ * جستجوی زنده و هوشمند با منطق دقیق ظرفیت، تخفیف، وضعیت و امکان ثبت‌نام
+ * کاملاً هماهنگ با getCourses, filterCourses و enrollCourse
  */
 const searchCourses = async (req, res) => {
   try {
     const { q } = req.query;
-    if (!q || q.trim().length < 2) {
-      return res.status(400).json({ message: 'Query must be at least 2 characters' });
+
+    if (!q || typeof q !== 'string' || q.trim().length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'جستجو باید حداقل ۲ کاراکتر باشد'
+      });
     }
 
-    const searchRegex = new RegExp(q.trim(), 'i');
+    const searchTerm = q.trim();
+    const regex = new RegExp(searchTerm, 'i');
 
-    const courses = await Course.find({
-      status: 'active',
+    const query = {
+      status: { $nin: ['stopped'] }, // فقط دوره‌های متوقف‌شده مخفی بشن
       $or: [
-        { title: searchRegex },
-        { 'teacher.name': searchRegex },
-        { 'category.name': searchRegex }
+        { title: regex },
+        { description: regex },
+        { 'teacher.name': regex },
+        { 'category.name': regex }
       ]
-    })
-      .populate('category', 'name')
-      .populate('teacher', 'name expertise')
-      .lean()
-      .limit(5);
+    };
 
-    const formatted = courses.map(c => ({
-      _id: c._id,
-      title: c.title,
-      coverImage: url(c.coverImage),
-      previewVideo: url(c.previewVideo),
-      teacherName: c.teacher ? `${c.teacher.name}` : 'Unknown',
-      category: c.category?.name || '',
-      level: c.level,
-      duration: c.duration,
-      price: c.price,
-      discount: c.discount,
-      finalPrice: c.finalPrice,
-      isDiscountActive: c.isDiscountActive,
-      type: c.type,
-      studentCount: c.students.length,
-      rating: c.rating,
-      firstVideo: c.chapters[0]?.videos[0]
-        ? {
-            _id: c.chapters[0].videos[0]._id,
-            title: c.chapters[0].videos[0].title,
-            fileUrl: url(c.chapters[0].videos[0].filePath),
-            accessible: true
-          }
-        : null
-    }));
+    const courses = await Course.find(query)
+      .populate('teacher', 'name expertise rating profilePic')
+      .populate('category', 'name slug')
+      .lean() // مهم: برای سرعت و کنترل دستی virtual ها
+      .limit(8)
+      .sort({ createdAt: -1 });
 
-    res.status(200).json({ suggestions: formatted });
+    if (courses.length === 0) {
+      return res.json({
+        success: true,
+        query: searchTerm,
+        count: 0,
+        suggestions: []
+      });
+    }
+
+    const now = new Date();
+
+    const suggestions = courses.map(c => {
+      // محاسبه دقیق تخفیف
+      const isDiscountActive = c.discount > 0 && c.discountEnd && now <= new Date(c.discountEnd);
+      const finalPrice = c.type === 'paid'
+        ? (isDiscountActive ? Math.round(c.price * (1 - c.discount / 100)) : c.price || 0)
+        : 0;
+
+      // محاسبه دقیق ظرفیت — دقیقاً مثل getCourses و enrollCourse
+      const enrolledCount = c.students?.length || 0;
+      const isFull = c.capacity > 0 && enrolledCount >= c.capacity;
+      const remainingCapacity = c.capacity > 0 
+        ? Math.max(0, c.capacity - enrolledCount) 
+        : null;
+
+      // منطق دقیق canEnroll — دقیقاً مثل بقیه کنترلرها
+      const canEnroll = !isFull && 
+                        (!c.registrationEnd || now <= new Date(c.registrationEnd));
+
+      // وضعیت نمایشی هوشمند
+      let displayStatus = 'در حال برگزاری';
+      if (c.status === 'pre-register') displayStatus = 'پیش‌ثبت‌نام';
+      else if (c.status === 'last-week') displayStatus = 'هفته آخر ثبت‌نام';
+      else if (c.status === 'finished') displayStatus = 'تکمیل شده';
+      else if (c.status === 'sold-out' || isFull) displayStatus = 'اتمام ظرفیت';
+      else if (c.status === 'active' && c.registrationEnd) {
+        const daysLeft = Math.ceil((new Date(c.registrationEnd) - now) / (86400000));
+        if (daysLeft > 0 && daysLeft <= 7) displayStatus = 'هفته آخر ثبت‌نام';
+      }
+
+      const firstVideo = c.chapters?.[0]?.videos?.[0];
+
+      return {
+        _id: c._id.toString(),
+        title: c.title,
+        slug: c.slug || c._id.toString(),
+        coverImage: url(c.coverImage),
+        previewVideoUrl: c.previewVideoUrl ? url(c.previewVideoUrl) : null,
+
+        teacher: {
+          name: c.teacher?.name?.trim() || 'نامشخص',
+          expertise: c.teacher?.expertise || '',
+          rating: Number(c.teacher?.rating || 0).toFixed(1),
+          profilePic: c.teacher?.profilePic ? url(c.teacher.profilePic) : null
+        },
+
+        category: c.category?.map(cat => ({
+          name: cat.name,
+          slug: cat.slug
+        })) || [],
+
+        level: c.level,
+        type: c.type,
+        duration: c.duration,
+
+        price: c.price || 0,
+        discount: c.discount || 0,
+        discountEnd: c.discountEnd,
+        finalPrice,
+        isDiscountActive,
+
+        status: c.status,
+        displayStatus,
+        canEnroll,                    // مهم برای فرانت‌اند
+        isFull,                       // مهم برای نمایش "اتمام ظرفیت"
+        isSoldOut: c.status === 'sold-out' || isFull,
+        remainingCapacity,            // null = نامحدود | 0 = پر | عدد = باقی‌مانده
+        isLimitedCapacity: c.capacity > 0,
+        studentCount: enrolledCount,
+
+        chapterCount: c.chapters?.length || 0,
+        videoCount: c.chapters?.reduce((sum, ch) => sum + (ch.videos?.length || 0), 0) || 0,
+
+        firstVideo: firstVideo ? {
+          _id: firstVideo._id.toString(),
+          title: firstVideo.title,
+          duration: firstVideo.duration,
+          videoUrl: firstVideo.videoUrl,
+          accessible: true
+        } : null,
+
+        rating: Number(c.courseRating || 0).toFixed(1),
+        ratingCount: c.courseRatingCount || 0
+      };
+    });
+
+    res.json({
+      success: true,
+      query: searchTerm,
+      count: suggestions.length,
+      suggestions
+    });
+
   } catch (err) {
-    console.error('Search error:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Course search error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'خطا در جستجوی دوره‌ها'
+    });
   }
 };
 

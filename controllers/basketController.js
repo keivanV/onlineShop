@@ -14,185 +14,194 @@ const PAYPING_BASE_URL = 'https://api.payping.ir/v2';
 const MIN_PAYMENT_AMOUNT = 100;
 const TEST_MODE = process.env.TEST_MODE === 'true';
 
-const addToBasket = async (req, res) => {
+
+const applyDiscountCode = async (req, res) => {
   try {
-    const { courseId, subscriptionPlanId, discountCode } = req.body;
-    const userId = req.user.id;
+    const { code } = req.body;
+    const userId = req.user._id;
 
-    console.log(`Received addToBasket request for user: ${userId}, course: ${courseId || 'none'}, subscription: ${subscriptionPlanId || 'none'}, discount: ${discountCode || 'none'}`);
+    const basket = await Basket.findOne({ user: userId })
+      .populate('courses.course', 'price discount')
+      .populate('subscriptionPlan', 'price');
 
-    if (!courseId && !subscriptionPlanId) {
-      console.log('Add to basket failed: At least one of courseId or subscriptionPlanId is required');
-      return res.status(400).json({ message: 'حداقل یکی از courseId یا subscriptionPlanId الزامی است' });
+    if (!basket || (!basket.courses.length && !basket.subscriptionPlan)) {
+      return res.status(400).json({ message: 'سبد خرید خالی است' });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      console.log(`Add to basket failed: User not found: ${userId}`);
-      return res.status(404).json({ message: 'کاربر یافت نشد' });
+    const discountCode = await DiscountCode.findOne({ code: code.toUpperCase() });
+    if (!discountCode) return res.status(404).json({ message: 'کد تخفیف یافت نشد' });
+
+    if (!discountCode.isActive) return res.status(400).json({ message: 'کد تخفیف غیرفعال است' });
+    if (discountCode.expiresAt && new Date() > discountCode.expiresAt) return res.status(400).json({ message: 'کد تخفیف منقضی شده' });
+    if (discountCode.usedCount >= discountCode.maxUses) return res.status(400).json({ message: 'کد تخفیف به حداکثر استفاده رسیده' });
+
+    // محاسبه جمع قبل از تخفیف
+    let total = 0;
+    basket.courses.forEach(item => {
+      let price = item.course.price || 0;
+      if (item.course.discount > 0) price *= (1 - item.course.discount / 100);
+      total += price;
+    });
+    if (basket.subscriptionPlan) total += basket.subscriptionPlan.price || 0;
+
+    const discountAmount = Math.round((total * discountCode.discountPercent) / 100);
+
+    basket.discountCode = code.toUpperCase();
+    basket.appliedDiscountAmount = discountAmount;
+    await basket.save();
+
+    // ثبت استفاده (اختیاری بعداً)
+    discountCode.usedCount += 1;
+    discountCode.usedBy.push({ user: userId });
+    await discountCode.save();
+
+    res.json({
+      message: 'کد تخفیف با موفقیت اعمال شد',
+      discountAmount,
+      newTotal: total - discountAmount
+    });
+
+  } catch (error) {
+    console.error('Apply discount error:', error);
+    res.status(500).json({ message: 'خطا در اعمال کد تخفیف' });
+  }
+};
+
+
+const removeDiscountCode = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const basket = await Basket.findOne({ user: userId });
+    if (!basket || !basket.discountCode) {
+      return res.status(400).json({ message: 'کد تخفیفی اعمال نشده' });
+    }
+
+    basket.discountCode = null;
+    basket.appliedDiscountAmount = 0;
+    await basket.save();
+
+    res.json({ message: 'کد تخفیف حذف شد' });
+  } catch (error) {
+    res.status(500).json({ message: 'خطا در حذف کد تخفیف' });
+  }
+};
+
+const addToBasket = async (req, res) => {
+  try {
+    const { courseId, subscriptionPlanId } = req.body;
+    const userId = req.user.id; 
+
+    console.log('addToBasket → user:', userId, 'courseId:', courseId, 'plan:', subscriptionPlanId);
+
+    if (!courseId && !subscriptionPlanId) {
+      return res.status(400).json({ message: 'دوره یا طرح اشتراک الزامی است' });
     }
 
     let basket = await Basket.findOne({ user: userId });
     if (!basket) {
-      basket = new Basket({ user: userId, courses: [], subscriptionPlan: null });
+      basket = new Basket({ user: userId, courses: [], discountCode: null, appliedDiscountAmount: 0 });
     }
 
+    // اضافه کردن دوره
     if (courseId) {
       const course = await Course.findById(courseId);
-      if (!course) {
-        console.log(`Add to basket failed: Course not found: ${courseId}`);
-        return res.status(404).json({ message: 'دوره یافت نشد' });
-      }
+      if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
+      if (course.type !== 'paid') return res.status(400).json({ message: 'فقط دوره‌های پولی قابل خرید هستند' });
 
-      if (course.type !== 'paid') {
-        console.log(`Add to basket failed: Only paid courses can be added to basket: ${courseId}`);
-        return res.status(400).json({ message: 'فقط دوره‌های پولی می‌توانند به سبد خرید اضافه شوند' });
-      }
+      const alreadyInBasket = basket.courses.some(c => c.course.toString() === courseId);
+      if (alreadyInBasket) return res.status(400).json({ message: 'دوره قبلاً در سبد است' });
 
-      if (basket.courses.some(item => item.course.toString() === courseId)) {
-        console.log(`Add to basket failed: Course already in basket: ${courseId}`);
-        return res.status(400).json({ message: 'این دوره قبلاً در سبد خرید شما وجود دارد' });
-      }
-
-      if (user.coursesEnrolled.includes(courseId)) {
-        console.log(`Add to basket failed: User already enrolled in course: ${courseId}`);
-        return res.status(400).json({ message: 'شما قبلاً در این دوره ثبت‌نام کرده‌اید' });
-      }
-
-      let appliedDiscount = 0;
-      let discountCodeObj = null;
-      if (discountCode) {
-        discountCodeObj = await DiscountCode.findOne({ code: discountCode.toUpperCase() });
-        if (!discountCodeObj) {
-          console.log(`Add to basket failed: Discount code not found: ${discountCode}`);
-          return res.status(404).json({ message: 'کد تخفیف یافت نشد' });
-        }
-        if (!discountCodeObj.isActive) {
-          console.log(`Add to basket failed: Discount code inactive: ${discountCode}`);
-          return res.status(400).json({ message: 'کد تخفیف غیرفعال است' });
-        }
-        if (discountCodeObj.usedCount >= discountCodeObj.maxUses) {
-          console.log(`Add to basket failed: Max uses reached for discount code: ${discountCode}`);
-          return res.status(400).json({ message: 'کد تخفیف به حداکثر تعداد استفاده رسیده است' });
-        }
-        if (discountCodeObj.expiresAt && new Date() > discountCodeObj.expiresAt) {
-          console.log(`Add to basket failed: Discount code expired: ${discountCode}`);
-          return res.status(400).json({ message: 'کد تخفیف منقضی شده است' });
-        }
-        const alreadyUsed = discountCodeObj.usedBy.some(
-          entry => entry.user.toString() === userId && entry.course.toString() === courseId
-        );
-        if (alreadyUsed) {
-          console.log(`Add to basket failed: Discount code already used by user ${userId} for course ${courseId}`);
-          return res.status(400).json({ message: 'شما قبلاً از این کد تخفیف برای این دوره استفاده کرده‌اید' });
-        }
-
-        let coursePrice = course.price || 0;
-        if (course.discount && course.discount > 0) {
-          coursePrice -= (coursePrice * course.discount) / 100;
-        }
-        appliedDiscount = (coursePrice * discountCodeObj.discountPercent) / 100;
-      }
-
-      basket.courses.push({
-        course: courseId,
-        discountCode: discountCode ? discountCode.toUpperCase() : null,
-        appliedDiscount
-      });
+      basket.courses.push({ course: courseId });
     }
 
+    // اضافه کردن طرح اشتراک
     if (subscriptionPlanId) {
-      const plan = await SubscriptionPlan.findById(subscriptionPlanId);
-      if (!plan) {
-        console.log(`Add to basket failed: Subscription plan not found: ${subscriptionPlanId}`);
-        return res.status(404).json({ message: 'طرح اشتراک یافت نشد' });
-      }
-
-      if (user.subscription === 'vip' && user.subscriptionExpiresAt && new Date() < user.subscriptionExpiresAt) {
-        console.log(`Add to basket failed: User ${userId} already has an active VIP subscription`);
-        return res.status(400).json({ message: 'شما قبلاً اشتراک VIP فعال دارید' });
-      }
-
       if (basket.subscriptionPlan) {
-        console.log(`Add to basket failed: Subscription plan already in basket: ${basket.subscriptionPlan}`);
-        return res.status(400).json({ message: 'یک طرح اشتراک قبلاً در سبد خرید شما وجود دارد' });
+        return res.status(400).json({ message: 'یک طرح اشتراک قبلاً اضافه شده' });
       }
-
+      const plan = await SubscriptionPlan.findById(subscriptionPlanId);
+      if (!plan) return res.status(404).json({ message: 'طرح اشتراک یافت نشد' });
       basket.subscriptionPlan = subscriptionPlanId;
     }
 
     await basket.save();
-    console.log(`Item(s) added to basket for user ${userId}`);
-    res.status(200).json({ message: 'با موفقیت به سبد خرید اضافه شد', basket });
-  } catch (error) {
-    console.error(`Add to basket error: ${error.message}`, { error });
-    res.status(500).json({ message: 'خطا در افزودن به سبد خرید' });
+    console.log('سبد با موفقیت ذخیره شد:', basket);
+
+    res.json({
+      message: 'با موفقیت به سبد خرید اضافه شد',
+      basket
+    });
+
+  } catch (err) { // ← اینجا err نوشتم نه error
+    console.error('خطا در addToBasket:', err.message);
+    console.error('استک کامل:', err);
+    res.status(500).json({
+      message: 'خطا در افزودن به سبد خرید',
+      error: err.message // ← حالا err تعریف شده
+    });
   }
 };
 
+
+// getBasket — کاملاً درست و با عکس و قیمت
 const getBasket = async (req, res) => {
   try {
     const userId = req.user.id;
 
     const basket = await Basket.findOne({ user: userId })
-      .populate('courses.course', 'title price discount')
-      .populate('subscriptionPlan', 'duration price');
-    if (!basket) {
-      console.log(`Get basket: No basket found for user ${userId}, returning empty basket`);
-      return res.status(200).json({
-        user: userId,
-        courses: [],
-        subscriptionPlan: null,
-        totalPrice: 0
-      });
+      .populate('courses.course', 'title description coverImage price discount')
+      .populate('subscriptionPlan', 'name price duration');
+
+    if (!basket || (!basket.courses.length && !basket.subscriptionPlan)) {
+      return res.json({ courses: [], subscriptionPlan: null, total: 0 });
     }
 
-    let totalPrice = 0;
-    const formattedCourses = basket.courses.map(item => {
-      let coursePrice = item.course.price || 0;
-      let courseDiscountAmount = 0;
-      if (item.course.discount && item.course.discount > 0) {
-        courseDiscountAmount = (coursePrice * item.course.discount) / 100;
-        coursePrice -= courseDiscountAmount;
-      }
-      coursePrice -= item.appliedDiscount || 0;
-      totalPrice += Math.max(0, coursePrice);
+    let total = 0;
+    const courses = basket.courses.map(item => {
+      const c = item.course;
+      const price = c.price || 0;
+      const discount = c.discount || 0;
+      const final = price * (1 - discount / 100);
+      total += final;
+
       return {
-        courseId: item.course._id,
-        title: item.course.title,
-        originalPrice: item.course.price || 0,
-        courseDiscountPercent: item.course.discount || 0,
-        courseDiscountAmount,
-        codeDiscountAmount: item.appliedDiscount || 0,
-        finalPrice: Math.max(0, coursePrice),
-        discountCode: item.discountCode
+        id: c._id,
+        title: c.title,
+        description: c.description || 'بدون توضیحات',
+        coverImage: c.coverImage ? `${process.env.BASE_URL || 'http://localhost:5000'}/uploads/${c.coverImage}` : null,
+        price,
+        discount,
+        finalPrice: Math.round(final)
       };
     });
 
-    let subscriptionPrice = 0;
-    let formattedSubscription = null;
     if (basket.subscriptionPlan) {
-      subscriptionPrice = basket.subscriptionPlan.price || 0;
-      totalPrice += Math.max(0, subscriptionPrice);
-      formattedSubscription = {
-        subscriptionPlanId: basket.subscriptionPlan._id,
-        duration: basket.subscriptionPlan.duration,
-        price: subscriptionPrice
-      };
+      total += basket.subscriptionPlan.price || 0;
     }
 
-    console.log(`Fetched basket for user ${userId}, totalPrice: ${totalPrice}`);
-    res.status(200).json({
-      user: userId,
-      courses: formattedCourses,
-      subscriptionPlan: formattedSubscription,
-      totalPrice
+    // اعمال کد تخفیف کل سبد
+    let discountAmount = basket.appliedDiscountAmount || 0;
+    const finalTotal = Math.max(100, total - discountAmount);
+
+    res.json({
+      courses,
+      subscriptionPlan: basket.subscriptionPlan ? {
+        id: basket.subscriptionPlan._id,
+        name: basket.subscriptionPlan.name,
+        price: basket.subscriptionPlan.price
+      } : null,
+      discountCode: basket.discountCode,
+      discountAmount,
+      totalBeforeDiscount: total,
+      totalAfterDiscount: finalTotal
     });
-  } catch (error) {
-    console.error(`Get basket error: ${error.message}`, { error });
-    res.status(500).json({ message: 'خطا در دریافت سبد خرید' });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'خطای دریافت سبد' });
   }
 };
+
 
 const removeFromBasket = async (req, res) => {
   try {
@@ -370,4 +379,4 @@ const checkoutBasket = async (req, res) => {
   }
 };
 
-module.exports = { addToBasket, getBasket, removeFromBasket, checkoutBasket };
+module.exports = { addToBasket, getBasket, removeFromBasket, checkoutBasket , applyDiscountCode , removeDiscountCode};

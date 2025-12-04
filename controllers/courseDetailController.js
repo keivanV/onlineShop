@@ -9,154 +9,251 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const url = (path) => (path ? `${BASE_URL}/uploads/${path}` : null);
 
 /* ------------------------------------------------------------------ */
-/* Helper: can the logged-in user access the whole course?            */
-/* ------------------------------------------------------------------ */
-const canAccessCourse = (course, user) => {
-  const isEnrolled = course.students.includes(user._id);
-  if (!isEnrolled) return false;
-
-  if (course.type === 'free' || course.type === 'paid') return true;
-
-  if (course.type === 'vip') {
-    return user.subscription === 'vip' && user.subscriptionExpiresAt && new Date() <= user.subscriptionExpiresAt;
-  }
-  return false;
-};
-
-/* ------------------------------------------------------------------ */
-/* GET /api/course/:courseId/detail – full course detail page         */
+/* GET /api/course/:courseId/detail – صفحه جزئیات کامل دوره         */
 /* ------------------------------------------------------------------ */
 const getCourseDetail = async (req, res) => {
   try {
-    const courseId = req.params.courseId?.trim();
-    if (!courseId) return res.status(400).json({ message: 'Course ID required' });
-    if (!mongoose.Types.ObjectId.isValid(courseId)) return res.status(400).json({ message: 'Invalid ID' });
-
-    const course = await Course.findById(courseId)
-      .populate('category', 'name')
-      .populate('teacher', 'name expertise bio rating')
-      .populate('comments.user', 'name')
-      .lean();
-
-    if (!course) return res.status(404).json({ message: 'Course not found' });
-    if (course.status !== 'active') return res.status(403).json({ message: 'Course not active' });
-
+    const { courseId } = req.params;
     const userId = req.user?._id;
-    let user = null, isEnrolled = false, canAccess = false;
 
-    if (userId) {
-      user = await User.findById(userId).select('-otp -otpExpires -refreshToken').lean();
-      isEnrolled = course.students.includes(userId);
-      canAccess = canAccessCourse(course, user);
+    // اعتبارسنجی ID
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      return res.status(400).json({ message: 'شناسه دوره نامعتبر است' });
     }
 
-    /* ------------------------------------------------------------------ */
-    /* Format chapters & videos – only videoUrl is returned               */
-    /* ------------------------------------------------------------------ */
-    const chapters = course.chapters.map((ch, chIdx) => ({
-      ...ch,
-      videos: ch.videos.map((v, vIdx) => {
-        const isFirst = chIdx === 0 && vIdx === 0;
-        const accessible = isFirst || (userId && canAccess);
+    // دریافت دوره با populate لازم
+    const course = await Course.findById(courseId)
+      .populate('category', 'name slug')
+      .populate('teacher', 'name expertise bio rating profilePic')
+      .populate('comments.user', 'name profilePic')
+      .lean();
+
+    if (!course) {
+      return res.status(404).json({ message: 'دوره یافت نشد' });
+    }
+
+    // مخفی کردن دوره‌های متوقف شده
+    if (course.status === 'stopped') {
+      return res.status(410).json({ message: 'این دوره حذف شده است' });
+    }
+
+    const now = new Date();
+
+    // محاسبه دستی virtual ها (دقیقاً مثل getCourses و searchCourses)
+    const isDiscountActive = course.discount > 0 && course.discountEnd && now <= new Date(course.discountEnd);
+    const finalPrice = course.type === 'paid'
+      ? (isDiscountActive ? Math.round(course.price * (1 - course.discount / 100)) : course.price || 0)
+      : 0;
+
+    const enrolledCount = course.students?.length || 0;
+    const isFull = course.capacity > 0 && enrolledCount >= course.capacity;
+    const remainingCapacity = course.capacity > 0 
+      ? Math.max(0, course.capacity - enrolledCount) 
+      : null;
+
+    const canEnroll = !isFull && (!course.registrationEnd || now <= new Date(course.registrationEnd));
+
+    // وضعیت نمایشی هوشمند
+    let displayStatus = 'در حال برگزاری';
+    if (course.status === 'pre-register') displayStatus = 'پیش‌ثبت‌نام';
+    else if (course.status === 'last-week') displayStatus = 'هفته آخر ثبت‌نام';
+    else if (course.status === 'finished') displayStatus = 'تکمیل شده';
+    else if (course.status === 'sold-out' || isFull) displayStatus = 'اتمام ظرفیت';
+    else if (course.registrationEnd) {
+      const daysLeft = Math.ceil((new Date(course.registrationEnd) - now) / (86400000));
+      if (daysLeft > 0 && daysLeft <= 7) displayStatus = 'هفته آخر ثبت‌نام';
+    }
+
+    // بررسی ثبت‌نام کاربر
+    const isEnrolled = userId ? course.students.some(s => s.toString() === userId.toString()) : false;
+
+    // دسترسی به محتوای کامل
+    let canAccessContent = false;
+    if (isEnrolled) {
+      if (course.type === 'free' || course.type === 'paid') {
+        canAccessContent = true;
+      } else if (course.type === 'vip') {
+        if (userId) {
+          const user = await User.findById(userId).select('subscription subscriptionExpiresAt').lean();
+          canAccessContent = user?.subscription === 'vip' && 
+                            user?.subscriptionExpiresAt && 
+                            now <= new Date(user.subscriptionExpiresAt);
+        }
+      }
+    }
+
+    // فصل‌ها و ویدیوها با کنترل دسترسی هوشمند
+    const chapters = course.chapters.map((chapter, chIdx) => ({
+      ...chapter,
+      _id: chapter._id.toString(),
+      videos: chapter.videos.map((video, vIdx) => {
+        const isFirstVideo = chIdx === 0 && vIdx === 0;
+        const accessible = isFirstVideo || canAccessContent;
+
         return {
-          _id: v._id,
-          title: v.title,
-          description: v.description || '',
-          duration: v.duration,
-          time: v.time || '',
-          videoUrl: v.videoUrl,
+          _id: video._id.toString(),
+          title: video.title,
+          description: video.description || '',
+          duration: video.duration || 0,
+          videoUrl: accessible ? video.videoUrl : null,
           accessible,
-          message: !accessible && userId ? getAccessMessage(course.type, isEnrolled, user) : undefined
+          locked: !accessible && !isFirstVideo,
+          lockReason: !accessible && !isFirstVideo ? (
+            !userId ? 'برای تماشای این ویدیو باید وارد شوید' :
+            !isEnrolled ? 'برای دسترسی به این ویدیو باید در دوره ثبت‌نام کنید' :
+            course.type === 'vip' ? 'اشتراک VIP فعال لازم است' :
+            'دسترسی محدود شده'
+          ) : null
         };
       })
     }));
 
-    function getAccessMessage(type, enrolled, user) {
-      if (!enrolled) return 'You must enroll to watch this video';
-      if (type === 'paid') return 'Payment required';
-      if (type === 'vip') {
-        if (user.subscription !== 'vip') return 'VIP subscription required';
-        if (!user.subscriptionExpiresAt || new Date() > user.subscriptionExpiresAt) return 'VIP subscription expired';
-      }
-      return 'Access denied';
-    }
+    // نظرات تأیید شده
+    const approvedComments = (course.comments || [])
+      .filter(c => c.status === 'approved')
+      .map(c => ({
+        _id: c._id.toString(),
+        text: c.text,
+        rating: c.rating,
+        createdAt: c.createdAt,
+        user: {
+          name: c.user?.name || 'ناشناس',
+          profilePic: c.user?.profilePic ? url(c.user.profilePic) : null
+        }
+      }));
 
-    const formattedCourse = {
-      ...course,
-      coverImage: url(course.coverImage),
-      previewVideoUrl: course.previewVideoUrl,
-      finalPrice: course.finalPrice,
-      isDiscountActive: course.isDiscountActive,
-      teacherName: course.teacher ? `${course.teacher.name}` : 'Unknown',
-      isEnrolled,
-      canAccess,
-      chapters,
-      comments: course.comments.filter(c => c.status === 'approved')
-    };
-
-    const teacher = course.teacher ? {
-      _id: course.teacher._id,
-      name: `${course.teacher.name}`,
-      expertise: course.teacher.expertise || '',
-      bio: course.teacher.bio || '',
-      rating: course.teacher.rating || 0
-    } : null;
-
+    // دوره‌های مرتبط
     const relatedCourses = await Course.find({
       _id: { $ne: course._id },
-      category: course.category._id,
-      status: 'active'
+      category: { $in: course.category.map(c => c._id) },
+      status: { $nin: ['stopped'] }
     })
-      .select('title coverImage price discount finalPrice level duration')
+      .select('title coverImage price discount discountEnd type capacity students')
+      .lean()
       .limit(6)
-      .lean();
+      .sort({ createdAt: -1 });
 
-    const formattedRelated = relatedCourses.map(rc => ({
-      ...rc,
-      coverImage: url(rc.coverImage),
-      finalPrice: rc.finalPrice
-    }));
+    const formattedRelated = relatedCourses.map(rc => {
+      const relDiscountActive = rc.discount > 0 && rc.discountEnd && now <= new Date(rc.discountEnd);
+      const relFinalPrice = rc.type === 'paid'
+        ? (relDiscountActive ? Math.round(rc.price * (1 - rc.discount / 100)) : rc.price || 0)
+        : 0;
+      const relIsFull = rc.capacity > 0 && (rc.students?.length || 0) >= rc.capacity;
 
+      return {
+        _id: rc._id.toString(),
+        title: rc.title,
+        coverImage: url(rc.coverImage),
+        finalPrice: relFinalPrice,
+        isDiscountActive: relDiscountActive,
+        isFull: relIsFull,
+        studentCount: rc.students?.length || 0
+      };
+    });
+
+    // داده‌های کاربر (اعلان + سبد خرید)
     let notifications = { list: [], unreadCount: 0 };
-    let basketData = { itemCount: 0, items: [], subscriptionPlan: null };
+    let basket = { itemCount: 0, items: [], total: 0 };
 
     if (userId) {
-      const [notifs, unread] = await Promise.all([
+      const [notifs, unread, userBasket] = await Promise.all([
         Notification.find({ user: userId }).sort({ createdAt: -1 }).limit(10).lean(),
-        Notification.countDocuments({ user: userId, isRead: false })
+        Notification.countDocuments({ user: userId, isRead: false }),
+        Basket.findOne({ user: userId }).populate('courses.course', 'title price discount discountEnd').lean()
       ]);
+
       notifications = { list: notifs, unreadCount: unread };
 
-      const basket = await Basket.findOne({ user: userId })
-        .populate('courses.course', 'title price discount')
-        .lean();
-
-      if (basket) {
-        basketData = {
-          itemCount: basket.courses.length,
-          items: basket.courses.map(i => ({
-            courseId: i.course._id,
-            title: i.course.title,
-            price: i.course.price,
-            discount: i.course.discount,
-            finalPrice: i.course.price - (i.course.price * i.course.discount) / 100
-          })),
-          subscriptionPlan: basket.subscriptionPlan
+      if (userBasket) {
+        basket = {
+          itemCount: userBasket.courses.length,
+          items: userBasket.courses.map(item => {
+            const c = item.course;
+            const discActive = c.discount > 0 && c.discountEnd && now <= new Date(c.discountEnd);
+            const fPrice = c.type === 'paid' ? (discActive ? Math.round(c.price * (1 - c.discount / 100)) : c.price) : 0;
+            return {
+              courseId: c._id.toString(),
+              title: c.title,
+              finalPrice: fPrice
+            };
+          }),
+          total: userBasket.courses.reduce((sum, i) => {
+            const c = i.course;
+            const discActive = c.discount > 0 && c.discountEnd && now <= new Date(c.discountEnd);
+            return sum + (c.type === 'paid' ? (discActive ? Math.round(c.price * (1 - c.discount / 100)) : c.price) : 0);
+          }, 0)
         };
       }
     }
 
+    // پاسخ نهایی
     res.json({
-      userProfile: user || null,
-      notifications,
-      basket: basketData,
-      course: formattedCourse,
-      teacher,
-      relatedCourses: formattedRelated
+      success: true,
+      data: {
+        course: {
+          _id: course._id.toString(),
+          title: course.title,
+          description: course.description || '',
+          coverImage: url(course.coverImage),
+          previewVideoUrl: course.previewVideoUrl ? url(course.previewVideoUrl) : null,
+
+          teacher: course.teacher ? {
+            _id: course.teacher._id.toString(),
+            name: course.teacher.name?.trim() || 'نامشخص',
+            expertise: course.teacher.expertise || '',
+            bio: course.teacher.bio || '',
+            rating: Number(course.teacher.rating || 0).toFixed(1),
+            profilePic: course.teacher.profilePic ? url(course.teacher.profilePic) : null
+          } : null,
+
+          category: course.category || [],
+          level: course.level,
+          type: course.type,
+          duration: course.duration,
+          presentationMethod: course.presentationMethod,
+
+          // قیمت و تخفیف
+          price: course.price || 0,
+          discount: course.discount || 0,
+          discountEnd: course.discountEnd,
+          finalPrice,
+          isDiscountActive,
+
+          // وضعیت و ظرفیت
+          status: course.status,
+          displayStatus,
+          canEnroll: canEnroll && !isEnrolled,
+          isEnrolled,
+          canAccessContent,
+          isFull,
+          remainingCapacity,        // null = نامحدود
+          isLimitedCapacity: course.capacity > 0,
+          studentCount: enrolledCount,
+          capacity: course.capacity,
+
+          // محتوا
+          chapters,
+          chapterCount: course.chapters.length,
+          videoCount: course.chapters.reduce((s, ch) => s + ch.videos.length, 0),
+
+          // نظرات
+          rating: Number(course.courseRating || 0).toFixed(1),
+          ratingCount: course.courseRatingCount || 0,
+          comments: approvedComments
+        },
+
+        relatedCourses: formattedRelated,
+        notifications,
+        basket
+      }
     });
+
   } catch (err) {
-    console.error('Course detail error:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('getCourseDetail error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'خطا در بارگذاری جزئیات دوره'
+    });
   }
 };
 
