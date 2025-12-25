@@ -1,4 +1,4 @@
-```markdown
+
 # Education Platform API (v2.0.0)
 
 A modern, password-less RESTful API for an online education platform built with Node.js. This API manages courses, podcasts, articles, users (students & teachers), subscriptions, payments, notifications, and more — with a fully OTP-based authentication flow.
@@ -43,9 +43,10 @@ Base URL (local development):
 4. `POST /auth/refresh` → Renew access token
 
 All protected endpoints require:
-```http
+
+
 Authorization: Bearer <accessToken>
-```
+
 
 ## Key Endpoints
 
@@ -157,7 +158,7 @@ We welcome contributions! Please:
         <td><img src="pics/pic4.png" alt="pic4" width="300"/></td>
     </tr>
     <tr>
-        <td><img src="assets/pics/pic5.png" alt="pic3" width="300"/></td>
+        <td><img src="pics/pic5.png" alt="pic3" width="300"/></td>
     </tr>
   </table>
 </div>
