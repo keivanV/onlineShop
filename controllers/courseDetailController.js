@@ -9,19 +9,17 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const url = (path) => (path ? `${BASE_URL}/uploads/${path}` : null);
 
 /* ------------------------------------------------------------------ */
-/* GET /api/course/:courseId/detail – صفحه جزئیات کامل دوره         */
+/* GET /api/course/:courseId/detail –      */
 /* ------------------------------------------------------------------ */
 const getCourseDetail = async (req, res) => {
   try {
     const { courseId } = req.params;
     const userId = req.user?._id;
 
-    // اعتبارسنجی ID
     if (!mongoose.Types.ObjectId.isValid(courseId)) {
       return res.status(400).json({ message: 'شناسه دوره نامعتبر است' });
     }
 
-    // دریافت دوره با populate لازم
     const course = await Course.findById(courseId)
       .populate('category', 'name slug')
       .populate('teacher', 'name expertise bio rating profilePic')
@@ -32,14 +30,12 @@ const getCourseDetail = async (req, res) => {
       return res.status(404).json({ message: 'دوره یافت نشد' });
     }
 
-    // مخفی کردن دوره‌های متوقف شده
     if (course.status === 'stopped') {
       return res.status(410).json({ message: 'این دوره حذف شده است' });
     }
 
     const now = new Date();
 
-    // محاسبه دستی virtual ها (دقیقاً مثل getCourses و searchCourses)
     const isDiscountActive = course.discount > 0 && course.discountEnd && now <= new Date(course.discountEnd);
     const finalPrice = course.type === 'paid'
       ? (isDiscountActive ? Math.round(course.price * (1 - course.discount / 100)) : course.price || 0)
@@ -53,7 +49,6 @@ const getCourseDetail = async (req, res) => {
 
     const canEnroll = !isFull && (!course.registrationEnd || now <= new Date(course.registrationEnd));
 
-    // وضعیت نمایشی هوشمند
     let displayStatus = 'در حال برگزاری';
     if (course.status === 'pre-register') displayStatus = 'پیش‌ثبت‌نام';
     else if (course.status === 'last-week') displayStatus = 'هفته آخر ثبت‌نام';
@@ -64,10 +59,8 @@ const getCourseDetail = async (req, res) => {
       if (daysLeft > 0 && daysLeft <= 7) displayStatus = 'هفته آخر ثبت‌نام';
     }
 
-    // بررسی ثبت‌نام کاربر
     const isEnrolled = userId ? course.students.some(s => s.toString() === userId.toString()) : false;
 
-    // دسترسی به محتوای کامل
     let canAccessContent = false;
     if (isEnrolled) {
       if (course.type === 'free' || course.type === 'paid') {
@@ -82,7 +75,6 @@ const getCourseDetail = async (req, res) => {
       }
     }
 
-    // فصل‌ها و ویدیوها با کنترل دسترسی هوشمند
     const chapters = course.chapters.map((chapter, chIdx) => ({
       ...chapter,
       _id: chapter._id.toString(),
@@ -108,7 +100,6 @@ const getCourseDetail = async (req, res) => {
       })
     }));
 
-    // نظرات تأیید شده
     const approvedComments = (course.comments || [])
       .filter(c => c.status === 'approved')
       .map(c => ({
@@ -122,7 +113,6 @@ const getCourseDetail = async (req, res) => {
         }
       }));
 
-    // دوره‌های مرتبط
     const relatedCourses = await Course.find({
       _id: { $ne: course._id },
       category: { $in: course.category.map(c => c._id) },
@@ -151,7 +141,6 @@ const getCourseDetail = async (req, res) => {
       };
     });
 
-    // داده‌های کاربر (اعلان + سبد خرید)
     let notifications = { list: [], unreadCount: 0 };
     let basket = { itemCount: 0, items: [], total: 0 };
 
@@ -186,7 +175,6 @@ const getCourseDetail = async (req, res) => {
       }
     }
 
-    // پاسخ نهایی
     res.json({
       success: true,
       data: {
@@ -212,31 +200,28 @@ const getCourseDetail = async (req, res) => {
           duration: course.duration,
           presentationMethod: course.presentationMethod,
 
-          // قیمت و تخفیف
           price: course.price || 0,
           discount: course.discount || 0,
           discountEnd: course.discountEnd,
           finalPrice,
           isDiscountActive,
 
-          // وضعیت و ظرفیت
           status: course.status,
           displayStatus,
           canEnroll: canEnroll && !isEnrolled,
           isEnrolled,
           canAccessContent,
           isFull,
-          remainingCapacity,        // null = نامحدود
+          remainingCapacity,       
           isLimitedCapacity: course.capacity > 0,
           studentCount: enrolledCount,
           capacity: course.capacity,
 
-          // محتوا
           chapters,
           chapterCount: course.chapters.length,
           videoCount: course.chapters.reduce((s, ch) => s + ch.videos.length, 0),
 
-          // نظرات
+          
           rating: Number(course.courseRating || 0).toFixed(1),
           ratingCount: course.courseRatingCount || 0,
           comments: approvedComments

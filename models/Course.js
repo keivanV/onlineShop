@@ -1,4 +1,3 @@
-// models/Course.js — Final version with auto sold-out detection and Persian labels
 
 const mongoose = require('mongoose');
 
@@ -118,17 +117,16 @@ courseSchema.virtual('isLimitedCapacity').get(function () {
 courseSchema.virtual('canEnroll').get(function () {
   const now = new Date();
 
-  // 1. دوره‌های متوقف‌شده یا لغوشده → هیچوقت قابل ثبت‌نام نیستن
+
   if (this.status === 'stopped') return false;
 
-  // 2. اگر ظرفیت پر شده باشه → نمیشه ثبت‌نام کرد (مهم‌ترین شرط)
+
   if (this.isFull) return false;
 
-  // 3. اگر مهلت ثبت‌نام تموم شده باشه
+
   if (this.registrationEnd && now > new Date(this.registrationEnd)) return false;
 
-  // 4. در همه حالات دیگر → ثبت‌نام بازه!
-  // شامل: active, pre-register, finished, و حتی sold-out که ظرفیتش خالی شده
+
   return true;
 });
 
@@ -165,17 +163,14 @@ courseSchema.virtual('displayStatus').get(function () {
 /* Pre-save: Auto update status when capacity is full                 */
 /* ------------------------------------------------------------------ */
 courseSchema.pre('save', function (next) {
-  // فقط وقتی واقعاً ظرفیت پر شد → sold-out کن
   if (this.isFull && !['stopped', 'finished'].includes(this.status)) {
     this.status = 'sold-out';
   }
 
-  // اگر ظرفیت باز شد → خودکار از sold-out خارج کن
   if (this.status === 'sold-out' && !this.isFull) {
     this.status = 'active';
   }
 
-  // بقیه اعتبارسنجی‌ها...
   if (this.type === 'paid' && (!this.price || this.price <= 0)) {
     return next(new Error('دوره پولی باید قیمت معتبر داشته باشد'));
   }

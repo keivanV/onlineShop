@@ -14,9 +14,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
 const createPodcast = async (req, res) => {
   try {
     const { title, description, duration, episode, tags, audioUrl } = req.body;
-    const coverFile = req.file; // فقط کاور آپلود شده
+    const coverFile = req.file; 
 
-    // اعتبارسنجی
     if (!title || !duration || !episode || !audioUrl || !coverFile) {
       return res.status(400).json({
         message: 'Missing required fields: title, duration, episode, audioUrl, coverImage'
@@ -31,15 +30,12 @@ const createPodcast = async (req, res) => {
       return res.status(400).json({ message: 'Cover must be an image' });
     }
 
-    // مسیر کاور
     const coverImage = `/uploads/podcasts/cover/${coverFile.filename}`;
 
-    // تگ‌ها
     const parsedTags = tags
       ? tags.split(',').map(t => t.trim()).filter(Boolean)
       : [];
 
-    // ساخت پادکست
     const podcast = new Podcast({
       title: title.trim(),
       description: description?.trim() || '',
@@ -54,7 +50,6 @@ const createPodcast = async (req, res) => {
 
     await podcast.save();
 
-    // اطلاع‌رسانی
     const users = await User.find({ role: { $in: ['student', 'teacher'] } }).select('_id');
     if (users.length > 0) {
       const notifications = users.map(user => ({
@@ -139,7 +134,6 @@ const deletePodcast = async (req, res) => {
       return res.status(403).json({ message: 'You can only delete your own podcasts' });
     }
 
-    // فقط کاور حذف می‌شه (فایل صوتی لینک خارجی است)
     const coverPath = path.join(__dirname, '..', 'uploads', 'podcasts', 'cover', path.basename(podcast.coverImage));
     fs.unlink(coverPath, err => {
       if (err && err.code !== 'ENOENT') {
@@ -147,10 +141,8 @@ const deletePodcast = async (req, res) => {
       }
     });
 
-    // حذف نوتیفیکیشن‌ها
     await Notification.deleteMany({ relatedId: podcastId, type: 'podcast' });
 
-    // حذف پادکست
     await Podcast.findByIdAndDelete(podcastId);
 
     res.status(200).json({ message: 'Podcast deleted successfully' });

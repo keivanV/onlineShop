@@ -50,7 +50,6 @@ const applyDiscountCode = async (req, res) => {
     basket.appliedDiscountAmount = discountAmount;
     await basket.save();
 
-    // ثبت استفاده (اختیاری بعداً)
     discountCode.usedCount += 1;
     discountCode.usedBy.push({ user: userId });
     await discountCode.save();
@@ -102,7 +101,6 @@ const addToBasket = async (req, res) => {
       basket = new Basket({ user: userId, courses: [], discountCode: null, appliedDiscountAmount: 0 });
     }
 
-    // اضافه کردن دوره
     if (courseId) {
       const course = await Course.findById(courseId);
       if (!course) return res.status(404).json({ message: 'دوره یافت نشد' });
@@ -114,7 +112,6 @@ const addToBasket = async (req, res) => {
       basket.courses.push({ course: courseId });
     }
 
-    // اضافه کردن طرح اشتراک
     if (subscriptionPlanId) {
       if (basket.subscriptionPlan) {
         return res.status(400).json({ message: 'یک طرح اشتراک قبلاً اضافه شده' });
@@ -137,13 +134,13 @@ const addToBasket = async (req, res) => {
     console.error('استک کامل:', err);
     res.status(500).json({
       message: 'خطا در افزودن به سبد خرید',
-      error: err.message // ← حالا err تعریف شده
+      error: err.message
     });
   }
 };
 
 
-// getBasket — کاملاً درست و با عکس و قیمت
+
 const getBasket = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -179,7 +176,6 @@ const getBasket = async (req, res) => {
       total += basket.subscriptionPlan.price || 0;
     }
 
-    // اعمال کد تخفیف کل سبد
     let discountAmount = basket.appliedDiscountAmount || 0;
     const finalTotal = Math.max(100, total - discountAmount);
 

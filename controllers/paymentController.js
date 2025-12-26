@@ -28,7 +28,6 @@ const getPaymentHistory = async (req, res) => {
 
     let query = {};
 
-    // ادمین: می‌تواند userId بدهد یا همه را ببیند
     if (userId) {
       if (!isAdmin) {
         return res.status(403).json({ message: 'دسترسی فقط برای ادمین' });
@@ -37,10 +36,8 @@ const getPaymentHistory = async (req, res) => {
       if (!target) return res.status(404).json({ message: 'کاربر یافت نشد' });
       query.user = userId;
     } else if (isAdmin && req.path.includes('/all')) {
-      // همه پرداخت‌ها
       query = {};
     } else {
-      // کاربر عادی: فقط خودش
       query.user = requesterId;
     }
 
@@ -86,7 +83,6 @@ const getPaymentHistory = async (req, res) => {
         itemsCount: courses.length + (subscription ? 1 : 0)
       };
 
-      // فقط ادمین اطلاعات کاربر را می‌بیند
       if (isAdmin && p.user) {
         return {
           ...base,

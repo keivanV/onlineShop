@@ -1,11 +1,7 @@
 // middleware/authOptional.js
 const jwt = require('jsonwebtoken');
 
-/**
- * Middleware اختیاری برای احراز هویت
- * - اگر توکن معتبر باشه: req.user = { _id: ... }
- * - اگر نباشه یا نامعتبر باشه: req.user = null
- */
+
 const authOptional = (req, res, next) => {
   const authHeader = req.headers.authorization;
 

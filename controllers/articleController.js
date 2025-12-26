@@ -23,7 +23,6 @@ const addCommentToArticle = async (req, res) => {
       return res.status(404).json({ message: 'مقاله یافت نشد' });
     }
 
-    // جلوگیری از کامنت تکراری
     const existing = article.comments.find(c => c.user.toString() === userId.toString());
     if (existing) {
       return res.status(400).json({ message: 'شما قبلاً کامنت داده‌اید' });
@@ -113,7 +112,6 @@ const approveArticleComment = async (req, res) => {
     comment.status = 'approved';
     await article.save();
 
-    // محاسبه مجدد امتیاز مقاله
     const approved = article.comments.filter(c => c.status === 'approved' && c.rating);
     const total = approved.reduce((sum, c) => sum + c.rating, 0);
     const count = approved.length;

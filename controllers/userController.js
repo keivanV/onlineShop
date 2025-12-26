@@ -230,14 +230,12 @@ const getUserDashboard = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. اطلاعات کاربر
     const user = await User.findById(userId)
       .select('name  phone email role status subscription subscriptionExpiresAt bio expertise profilePic isProfileComplete createdAt lastLogin')
       .lean();
 
     if (!user) return res.status(404).json({ message: 'کاربر یافت نشد' });
 
-    // 2. دوره‌های ثبت‌نام شده
     const enrolledCourses = await Course.find({ students: userId, status: 'active' })
       .populate('teacher', 'name  rating expertise bio profilePic')
       .populate('category', 'name')
@@ -282,7 +280,6 @@ const getUserDashboard = async (req, res) => {
       };
     });
 
-    // 3. کامنت‌های کاربر + اطلاعات دوره
     const coursesWithComments = await Course.find({ 'comments.user': userId })
       .select('title coverImage courseRating courseRatingCount comments')
       .lean();
@@ -311,14 +308,12 @@ const getUserDashboard = async (req, res) => {
       }
     }
 
-    // 4. اعلانات
     const notifications = await Notification.find({ user: userId })
       .select('title message type relatedId isRead createdAt')
       .sort({ createdAt: -1 })
       .limit(20)
       .lean();
 
-    // 5. تاریخچه پرداخت
     const recentPayments = await Payment.find({ user: userId })
       .populate('courses.course', 'title coverImage')
       .populate('subscriptionPlan', 'duration')

@@ -171,13 +171,13 @@ const getCourses = async (req, res) => {
   try {
     const userId = req.user?._id?.toString();
 
-    // حذف .lean() ← این خط حیاتیه!
+
     const courses = await Course.find({ status: { $nin: ['stopped'] } })
       .populate('teacher', 'name expertise bio rating profilePic phone email')
       .populate('students', 'name profilePic email')
       .populate('comments.user', 'name profilePic')
       .populate('category', 'name slug');
-      // .lean() رو حذف کردیم → virtualها کار می‌کنن
+     
 
     const formatted = await Promise.all(
       courses.map(course => formatFullCourse(course, userId))
@@ -227,16 +227,15 @@ const createCourse = async (req, res) => {
       return res.status(400).json({ message: 'برای دوره‌های پولی، قیمت الزامی است' });
     }
 
-    // ---- تبدیل و اعتبارسنجی category -------------------------------
     let categoryIds = [];
 
     if (typeof category === 'string') {
       try {
-        // اگر JSON بود: ["id1","id2"]
+     
         if (category.trim().startsWith('[')) {
           categoryIds = JSON.parse(category);
         } 
-        // اگر کاما جدا شده بود: id1,id2
+    
         else {
           categoryIds = category.split(',').map(id => id.trim()).filter(id => id);
         }
@@ -253,7 +252,7 @@ const createCourse = async (req, res) => {
       return res.status(400).json({ message: 'حداقل یک دسته‌بندی الزامی است' });
     }
 
-    // تبدیل به ObjectId و اعتبارسنجی
+
     const objectIds = categoryIds.map(id => {
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: `شناسه دسته‌بندی نامعتبر: ${id}` });
@@ -261,19 +260,16 @@ const createCourse = async (req, res) => {
       return new mongoose.Types.ObjectId(id);
     });
 
-    // بررسی وجود در دیتابیس
     const validCategories = await Category.find({ _id: { $in: objectIds } });
     if (validCategories.length !== objectIds.length) {
       return res.status(400).json({ message: 'یک یا چند دسته‌بندی نامعتبر است' });
     }
 
-    // ---- اعتبارسنجی مدرس -----------------------------------------
     const teacherDoc = await User.findById(teacher);
     if (!teacherDoc || teacherDoc.role !== 'teacher') {
       return res.status(400).json({ message: 'مدرس نامعتبر است' });
     }
 
-    // ---- ایجاد دوره -------------------------------------------------
     const course = new Course({
       title: title.trim(),
       description: description?.trim() || '',
@@ -289,7 +285,6 @@ const createCourse = async (req, res) => {
       previewVideoUrl: previewVideoUrl || null
     });
 
-    // ---- مدیریت تخفیف ---------------------------------------------
     if (type === 'paid' && course.discount > 0) {
       const end = calculateDiscountEnd(
         parseInt(discountHours) || 0,
@@ -302,15 +297,12 @@ const createCourse = async (req, res) => {
       course.discountEnd = end;
     }
 
-    // ذخیره اولیه (برای داشتن _id)
     await course.save({ validateBeforeSave: false });
 
-    // ---- ذخیره کاور -------------------------------------------------
     const basePath = path.join(__dirname, '..', 'uploads', 'courses', `course_${course._id}`);
     ensureDir(basePath);
     course.coverImage = saveFile(coverFile, basePath);
 
-    // ---- فصل‌ها و ویدیوها -----------------------------------------
     const chapterIndices = [...new Set(
       Object.keys(req.body)
         .filter(k => k.startsWith('chapters['))
@@ -358,7 +350,6 @@ const createCourse = async (req, res) => {
 
     cleanupTemp();
 
-    // ---- اطلاع‌رسانی به دانشجویان -----------------------------------
     const students = await User.find({ role: 'student' });
     const notifs = students.map(s => ({
       user: s._id,
@@ -369,7 +360,6 @@ const createCourse = async (req, res) => {
     }));
     if (notifs.length) await Notification.insertMany(notifs);
 
-    // ---- پاسخ نهایی -------------------------------------------------
     const populatedCourse = await Course.findById(course._id)
       .populate('category', 'name')
       .populate('teacher', 'name  expertise');
@@ -397,7 +387,6 @@ const editCourse = async (req, res) => {
     const basePath = path.join(__dirname, '..', 'uploads', 'courses', `course_${course._id}`);
     ensureDir(basePath);
 
-    // --- آپدیت کاور (فقط اگر فایل ارسال شده بود) ---
     if (coverFile) {
       if (course.coverImage) {
         const oldPath = path.join(__dirname, '..', 'uploads', course.coverImage);
@@ -406,7 +395,6 @@ const editCourse = async (req, res) => {
       course.coverImage = saveFile(coverFile, basePath);
     }
 
-    // --- آپدیت فیلدهای ساده (فقط اگر مقدار معتبر داشت) ---
     const safeUpdate = (field, value, parser = v => v) => {
       if (value !== undefined && value !== null && value !== '' && !Number.isNaN(value)) {
         course[field] = parser(value);
@@ -420,17 +408,14 @@ const editCourse = async (req, res) => {
     safeUpdate('presentationMethod', req.body.presentationMethod);
     safeUpdate('previewVideoUrl', req.body.previewVideoUrl);
 
-    // --- نوع دوره ---
     if (req.body.type && ['free', 'vip', 'paid'].includes(req.body.type)) {
       course.type = req.body.type;
     }
 
-    // --- قیمت و تخفیف (فقط برای دوره‌های پولی) ---
     if (course.type === 'paid') {
       safeUpdate('price', req.body.price, parseFloat);
       safeUpdate('discount', req.body.discount, parseFloat);
 
-      // تخفیف فقط اگر مقدارش تغییر کرده باشه
       if (req.body.discount !== undefined) {
         const discountValue = parseFloat(req.body.discount);
         if (discountValue > 0) {
@@ -450,12 +435,10 @@ const editCourse = async (req, res) => {
       course.discountEnd = undefined;
     }
 
-    // --- توضیحات دوره ---
     if (req.body.description !== undefined && req.body.description !="") {
       course.description = req.body.description?.trim() || '';
     }
 
-    // --- دسته‌بندی ---
     if (req.body.category !== undefined) {
       let cats = [];
       if (typeof req.body.category === 'string') {
@@ -479,7 +462,6 @@ const editCourse = async (req, res) => {
       }
     }
 
-    // --- مدرس ---
     if (req.body.teacher && req.body.teacher !== course.teacher.toString()) {
       const newTeacher = await User.findById(req.body.teacher);
       if (!newTeacher || newTeacher.role !== 'teacher') {
@@ -490,7 +472,6 @@ const editCourse = async (req, res) => {
       course.teacher = req.body.teacher;
     }
 
-    // --- ظرفیت دوره (کاملاً ایمن) ---
     if (req.body.capacity !== undefined && req.body.capacity !== null && req.body.capacity !== '') {
       const newCapacity = parseInt(req.body.capacity);
       if (!isNaN(newCapacity) && newCapacity >= 0) {
@@ -498,7 +479,6 @@ const editCourse = async (req, res) => {
       }
     }
 
-    // --- فصل‌ها و ویدیوها (ضد Swagger empty value!) ---
     const chapterIndices = [...new Set(
       Object.keys(req.body)
         .filter(k => k.startsWith('chapters[') && k.includes('].title'))
@@ -510,7 +490,6 @@ const editCourse = async (req, res) => {
 
       for (const chIdx of chapterIndices) {
         const chapterTitle = req.body[`chapters[${chIdx}].title`];
-        // اگر عنوان فصل خالی یا وجود نداشت → این فصل ویرایش نشده
         if (!chapterTitle || chapterTitle.trim() === '') continue;
 
         if (!updatedChapters[chIdx]) {
@@ -532,7 +511,6 @@ const editCourse = async (req, res) => {
 
         for (const vIdx of videoIndices) {
           const videoUrl = req.body[`chapters[${chIdx}].videos[${vIdx}].videoUrl`];
-          // اگر videoUrl خالی بود → این ویدیو ویرایش نشده
           if (!videoUrl || videoUrl.trim() === '') continue;
 
           if (!updatedVideos[vIdx]) updatedVideos[vIdx] = {};
@@ -550,7 +528,6 @@ const editCourse = async (req, res) => {
       course.chapters = updatedChapters.filter(ch => ch && ch.title && ch.videos?.length > 0);
     }
 
-    // ذخیره نهایی — pre-save hook خودش isFull و remainingCapacity رو آپدیت می‌کنه
     await course.save();
     cleanupTemp();
 
@@ -591,7 +568,6 @@ const deleteCourse = async (req, res) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Enroll, comments, video access – بدون تغییر                        */
 /* ------------------------------------------------------------------ */
 const enrollCourse = async (req, res) => {
   try {
@@ -625,7 +601,7 @@ const enrollCourse = async (req, res) => {
     }
 
     course.students.push(userId);
-    await course.save(); // pre-save خودش status رو آپدیت می‌کنه
+    await course.save(); 
 
     await User.findByIdAndUpdate(userId, { $addToSet: { coursesEnrolled: courseId } });
 
@@ -654,7 +630,6 @@ const addComment = async (req, res) => {
       return res.status(403).json({ message: 'برای نظر دادن باید در دوره ثبت‌نام کنید' });
     }
 
-    // جلوگیری از نظر دادن دوباره
     const existingComment = course.comments.find(c =>
       c.user.toString() === userId && c.status !== 'rejected'
     );
@@ -730,7 +705,6 @@ const approveComment = async (req, res) => {
 
     comment.status = 'approved';
 
-    // محاسبه rating دوره
     const approvedComments = course.comments.filter(c => c.status === 'approved');
     const totalRating = approvedComments.reduce((sum, c) => sum + c.rating, 0);
     const ratingCount = approvedComments.length;
@@ -740,7 +714,6 @@ const approveComment = async (req, res) => {
 
     await course.save();
 
-    // بروزرسانی rating مدرس
     await updateTeacherRating(course.teacher);
 
     res.json({

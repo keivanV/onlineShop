@@ -6,8 +6,8 @@ const url = (path) => (path ? `${BASE_URL}/uploads/${path}` : null);
 
 /**
  * GET /api/course/search?q=react
- * جستجوی زنده و هوشمند با منطق دقیق ظرفیت، تخفیف، وضعیت و امکان ثبت‌نام
- * کاملاً هماهنگ با getCourses, filterCourses و enrollCourse
+ * 
+ *getCourses, filterCourses و enrollCourse
  */
 const searchCourses = async (req, res) => {
   try {
@@ -24,7 +24,7 @@ const searchCourses = async (req, res) => {
     const regex = new RegExp(searchTerm, 'i');
 
     const query = {
-      status: { $nin: ['stopped'] }, // فقط دوره‌های متوقف‌شده مخفی بشن
+      status: { $nin: ['stopped'] }, 
       $or: [
         { title: regex },
         { description: regex },
@@ -36,7 +36,7 @@ const searchCourses = async (req, res) => {
     const courses = await Course.find(query)
       .populate('teacher', 'name expertise rating profilePic')
       .populate('category', 'name slug')
-      .lean() // مهم: برای سرعت و کنترل دستی virtual ها
+      .lean() 
       .limit(8)
       .sort({ createdAt: -1 });
 
@@ -52,24 +52,21 @@ const searchCourses = async (req, res) => {
     const now = new Date();
 
     const suggestions = courses.map(c => {
-      // محاسبه دقیق تخفیف
+
       const isDiscountActive = c.discount > 0 && c.discountEnd && now <= new Date(c.discountEnd);
       const finalPrice = c.type === 'paid'
         ? (isDiscountActive ? Math.round(c.price * (1 - c.discount / 100)) : c.price || 0)
         : 0;
 
-      // محاسبه دقیق ظرفیت — دقیقاً مثل getCourses و enrollCourse
       const enrolledCount = c.students?.length || 0;
       const isFull = c.capacity > 0 && enrolledCount >= c.capacity;
       const remainingCapacity = c.capacity > 0 
         ? Math.max(0, c.capacity - enrolledCount) 
         : null;
 
-      // منطق دقیق canEnroll — دقیقاً مثل بقیه کنترلرها
       const canEnroll = !isFull && 
                         (!c.registrationEnd || now <= new Date(c.registrationEnd));
 
-      // وضعیت نمایشی هوشمند
       let displayStatus = 'در حال برگزاری';
       if (c.status === 'pre-register') displayStatus = 'پیش‌ثبت‌نام';
       else if (c.status === 'last-week') displayStatus = 'هفته آخر ثبت‌نام';
@@ -113,10 +110,10 @@ const searchCourses = async (req, res) => {
 
         status: c.status,
         displayStatus,
-        canEnroll,                    // مهم برای فرانت‌اند
-        isFull,                       // مهم برای نمایش "اتمام ظرفیت"
+        canEnroll,                   
+        isFull,                      
         isSoldOut: c.status === 'sold-out' || isFull,
-        remainingCapacity,            // null = نامحدود | 0 = پر | عدد = باقی‌مانده
+        remainingCapacity,           
         isLimitedCapacity: c.capacity > 0,
         studentCount: enrolledCount,
 
