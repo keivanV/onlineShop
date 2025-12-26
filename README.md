@@ -1,6 +1,9 @@
 
 # Education Platform API (v2.0.0)
 
+
+Aparat Link  : https://aparat.com/v/mzv8n8o
+
 A modern, password-less RESTful API for an online education platform built with Node.js. This API manages courses, podcasts, articles, users (students & teachers), subscriptions, payments, notifications, and more — with a fully OTP-based authentication flow.
 
 **Version 2.0.0** introduces a complete password-less authentication system and enhanced course status logic.
